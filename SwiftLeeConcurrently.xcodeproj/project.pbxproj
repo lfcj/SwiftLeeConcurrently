@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3C654B3E2EDF0879005F6357 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 3C654B3D2EDF0879005F6357 /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3C654B1C2EDF0146005F6357 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		3C654B0E2EDF0144005F6357 /* SwiftLeeConcurrently.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftLeeConcurrently.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C654B1B2EDF0146005F6357 /* SwiftLeeConcurrentlyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftLeeConcurrentlyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3C654B252EDF0146005F6357 /* SwiftLeeConcurrentlyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftLeeConcurrentlyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C654B3D2EDF0879005F6357 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +80,7 @@
 		3C654B052EDF0144005F6357 = {
 			isa = PBXGroup;
 			children = (
+				3C654B3D2EDF0879005F6357 /* README.md */,
 				3C654B102EDF0144005F6357 /* SwiftLeeConcurrently */,
 				3C654B1E2EDF0146005F6357 /* SwiftLeeConcurrentlyTests */,
 				3C654B282EDF0146005F6357 /* SwiftLeeConcurrentlyUITests */,
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3C654B3E2EDF0879005F6357 /* README.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

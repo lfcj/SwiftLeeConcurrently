@@ -153,3 +153,7 @@ guard Task.isCancelled == false else {
    return someDefaultValueUsedWhenNetworkFails
 }
 ```
+
+#### Cancelling image downloads from within SwiftUI views when they disappear
+
+ 
