@@ -156,4 +156,50 @@ guard Task.isCancelled == false else {
 
 #### Cancelling image downloads from within SwiftUI views when they disappear
 
+One quick way is having a 
+```
+@State var imageDownloadingTask: Task<Void, Never>?
+...
+.onAppear { imageDownloadingTask = Task { ...await downloadImage() } }
+.onDisappear { imageDownloadingTask?.cancel() }
+```
+
+nevertheless, there is a way to let SwiftUI do this automatically, that is, with the `task` modifier:
+
+ ```
+@State var image: UIImage?
+var body: some View {
+     UIImage(uiImage: image)
+     .task { image = await downloadImage() }
+}
+ ```
  
+ In this case, SwiftUI cancels the task once the view is removed.
+ 
+ 
+ #### Is .task run before Task?
+ 
+ The executor decides, this is an example that explains it well:
+ 
+ ```
+ SomeView()
+    .task(priority: .high, {
+        /// Executes earlier than a task scheduled inside `onAppear`.
+        print("1")
+    })
+    .onAppear {
+        /// Scheduled later than using the `task` modifier which
+        /// adds an asynchronous task to perform before the view appears.
+        Task(priority: .high) { print("2") }
+        
+        /// Regular code inside `onAppear` might appear to run earlier than a `Task`.
+        /// This is due to the task executor scheduler.
+        print("3")
+    }
+```
+
+ #### Parent Tasks 
+ 
+ All child tasks are *notified* by their parents when a cancellation happens.
+ 
+ **However**, that a Task is notified does not mean that the code will be cancelled. It is imperative to check for `Task.isCancelled` during execution.

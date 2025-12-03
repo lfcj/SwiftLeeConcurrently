@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ImageDownloadView: View {
     @State var image: UIImage?
+    @State var imageDownloadingTask: Task<Void, Never>?
 
     var body: some View {
         VStack {
@@ -11,17 +12,43 @@ struct ImageDownloadView: View {
                 Text("Loading...")
             }
         }.onAppear {
-            Task {
+            imageDownloadingTask = Task {
                 do {
-                    image = try await fetchImage()
+                    image = try await ImageFetcher().fetchImage()
                     print("Image loading completed")
                 } catch {
                     print("Image loading failed: \(error)")
                 }
             }
+        }.onDisappear {
+            imageDownloadingTask?.cancel()
         }
     }
+}
 
+struct AutoCancellingDownloadView: View {
+    @State var image: UIImage?
+
+    var body: some View {
+        VStack {
+            if let image {
+                Image(uiImage: image)
+            } else {
+                Text("Loading...")
+            }
+        }.task {
+            do {
+                image = try await ImageFetcher().fetchImage()
+                print("Image loading completed")
+            } catch {
+                print("Image loading failed: \(error)")
+            }
+        }
+    }
+}
+
+struct ImageFetcher {
+    
     // The wrapper is used to be able to show how cancellation works to return a fallback
     func fetchImageWithWrapper() async throws -> UIImage? {
         let imageTask = Task { () -> UIImage? in
@@ -56,7 +83,6 @@ struct ImageDownloadView: View {
         return UIImage(data: imageData) ?? fallbackImage
     }
 }
-
 #Preview {
     ImageDownloadView()
 }
