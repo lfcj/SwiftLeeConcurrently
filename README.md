@@ -200,7 +200,7 @@ var body: some View {
 
  #### Parent Tasks 
  
- All child tasks are *notified* by their parents when a cancellation happens.
+ All children tasks are *notified* by their parents when a cancellation happens.
  
  **However**, that a Task is notified does not mean that the code will be cancelled. It is imperative to check for `Task.isCancelled` or `try Task.checkCancellation()` during execution.
 
