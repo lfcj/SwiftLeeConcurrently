@@ -202,4 +202,85 @@ var body: some View {
  
  All child tasks are *notified* by their parents when a cancellation happens.
  
- **However**, that a Task is notified does not mean that the code will be cancelled. It is imperative to check for `Task.isCancelled` during execution.
+ **However**, that a Task is notified does not mean that the code will be cancelled. It is imperative to check for `Task.isCancelled` or `try Task.checkCancellation()` during execution.
+
+#### Task types
+
+A `Task` type generally infers the success of failure types it can handle.
+
+The task `Task<String, Error>` will return a `String` when successful or an `Error` when not successful.
+
+The task `Task<String, Never>` will return a `String` and is never expected to fail.
+
+It is possible to handle errors within a task using `do/catch` blocks, or to throw them and propagate them to the caller. 
+
+### Detached Tasks or _unstructured_ concurrency.
+
+```
+"A detached task runs a given operation asynchronously as part of a new top-level task."
+```
+And we start a task like this:
+```
+Task.detached {
+    await doSomethingFromNonStructuredConcurrency()
+}
+```
+
+Just like newly created Tasks, detached tasks are executed in a non structure way. One important thing is that detached tasks **do not inherit** from their context. They cannot. This includes priority and cancellation state, so one needs to address separately as it is a risk.
+
+In this example:
+
+```
+let parentTask = Task {
+    await someLongTask1()
+
+    Task.detached {
+        try Task.checkCancellation()
+        await someLongTask2()
+    }
+}
+parentTask.cancel()
+```
+
+The `someLongTask1` would be cancelled, the second one would not, even though we check if cancellation happened.
+
+#### When to use Detached Tasks?
+
+If using a 'detached' task is important, one that runs independently, `async let` would be advisable, or task groups. But in cases in which there is no need to access the context or need to cancel the tasks, such as downloading specific data or cleaning up directories, a detached task could be the solution.
+
+### Task Groups
+
+`async let` allows us creating tasks that run inside an array. But what if we need to run them from within an array? In that case `task groups` are the solution. These ones allow us to run a lot of different tasks asynchronously and return when all of them are done. These child tasks can run serially or in parallel. 
+
+Here is an example that adds a task that returns a `String`, runs them all in parallel and returns when all tasks are done:
+
+```
+let results: [String] = await withTaskGroup(of: String.self) { group in
+    group.addTask { "A" }
+    group.addTask { "B" }
+    return await group.reduce(into: []) { $0.append($1) }
+}
+```  
+
+We can start tasks and gather their results, this is helpful to download the definition for a set of words, for example:
+```
+let definitions: [String] = await withTaskGroup(of: String.self, returning: [String].self) { group in
+    let words = await downloadWordsFromBook()
+    for word in words {
+        group.addTask { await downloadDefinition(of: word) }
+    }
+    var definitions = [String]()
+    for await definition in group { // <- async sequence
+        definitions.append(definition)
+    }
+    return definitions
+}
+```
+
+The latter async sequence conforms to `AsyncSequence` and can be rewritten as:
+
+```
+return await group.reduce(into: [String]()) { partialResult, definition in
+    partialResult.append(name)
+}
+```
