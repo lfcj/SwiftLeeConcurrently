@@ -250,7 +250,7 @@ If using a 'detached' task is important, one that runs independently, `async let
 
 ### Task Groups
 
-`async let` allows us creating tasks that run inside an array. But what if we need to run them from within an array? In that case `task groups` are the solution. These ones allow us to run a lot of different tasks asynchronously and return when all of them are done. These child tasks can run serially or in parallel. 
+`async let` allows us creating tasks that run inside an _awaited_ array. But what if we need to use a for-loop? In that case `task groups` are the solution. These ones allow us to run a lot of different tasks asynchronously and return when all of them are done. These child tasks can run serially or in parallel. 
 
 Here is an example that adds a task that returns a `String`, runs them all in parallel and returns when all tasks are done:
 
@@ -264,7 +264,7 @@ let results: [String] = await withTaskGroup(of: String.self) { group in
 
 We can start tasks and gather their results, this is helpful to download the definition for a set of words, for example:
 ```
-let definitions: [String] = await withTaskGroup(of: String.self, returning: [String].self) { group in
+let dictionary: [String] = await withTaskGroup(of: String.self, returning: [String].self) { group in
     let words = await downloadWordsFromBook()
     for word in words {
         group.addTask { await downloadDefinition(of: word) }
@@ -284,3 +284,137 @@ return await group.reduce(into: [String]()) { partialResult, definition in
     partialResult.append(name)
 }
 ```
+
+#### What if one of the task group tasks throws an error?
+
+In cases in which the method is one that can throw, using `withThrowingTaskGroup` is the right option. 
+
+```
+let dictionary: [String] = try await withThrowingTaskGroup(of: String.self, returning: [String].self) { group in
+    let words = try await downloadWordsFromBook()
+    for word in words {
+        group.addTask { try await downloadDefinition(of: word) }
+    }
+    return try await group.reduce(into: [String]()) { partialResult, definition in
+        partialResult.append(name)
+    }
+}
+```
+
+The great part is that `dictionary` will have a list of definitions that did not throw an error.
+
+#### When are all tasks cancelled by a thrown error and when not?
+
+In the following code, no task will be cancelled when the index is 3 because the error is inside of a child task:
+
+```
+try await withThrowingTaskGroup(of: Void.self) { group in
+    (0..<5).forEach { index in 
+        group.addTask {
+            if index == 3 {
+                throw SomeError()
+            } else {
+                print("index: \(index)")
+            }    
+        }
+    }
+}
+``` 
+The above code prints the numbers between 0 and 4, except number 3.
+
+All tasks are cancelled only when the result of a task is unwrapped, meaning the error is rethrown inside of the main body of `withThrowingTaskGroup`:
+```
+try await withThrowingTaskGroup(of: Void.self) { group in
+    group.addTask {
+        print("3")
+        throw NSError(domain: "hi", code: 123)
+    }
+    try await group.next()
+} 
+```
+In this case the first `try await` before `withThrowingTaskGroup` will throw the error.
+ 
+That child tasks do not throw errors is very useful for batched tasks that do not need a status update, such as analytics logs.
+
+But in cases in which one wants status updates, one can use a for or a while loop in order to unwrap errors/results inside of groups and handle them accordingly:
+
+```
+while let someResult = try await group.next() {}
+```
+or 
+```
+for try await result in group {}
+```
+
+> So, to summarize:
+> 
+> Use `withTaskGroup` when your tasks can’t fail.
+> 
+> Use `withThrowingTaskGroup` when any child might throw.
+> 
+> To make the group fail early if a task throws, iterate over the results using methods like `next()` — otherwise, errors are silently ignored.
+
+#### Cancellation in groups
+
+Groups of tasks can also be cancelled from outside when needed, one option is by doing:
+```
+groupTask.cancelAll()
+```
+
+In an ideal world, code executed inside of child tasks respects cancellation correctly, but since the world is not always an ideal world, another good option is to run:
+```
+group.addTaskUnlessCancelled {}
+```
+
+### **async let** vs **TaskGroup**
+
+Both `async let` and `TaskGroup` are very useful options to run tasks asynchronously and immediately, but here is a quick comparison:
+
+| Characteristic | `async let`  | `Task Group` |
+| ------------- | ------------- | ------------- |
+| **It is bound to the scope where it is created **| Yes  | No  |
+| **How does cancellation happen?**| It happens when scope is left  | Needs to happen manually  |
+| **How are errors handled?**| It stops after the first error and throws it | It can ignore errors or throw them, it has control over them |
+ 
+ As we can see in the [async let proposal site](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0317-async-let.md), the goal was to have a lightweight way to spawn an asynchronous task and let the parent use its results later. If one needs more control over cancellations, dynamically creating tasks or post-processing results, `TaskGroup`s are the perfect solution.
+ 
+ ### [Discarding Task Groups](https://avanderlee.com/courses/wp/swift-concurrency/discarding-task-groups/)
+ 
+ A quick summary of "Discarding Task Groups" is "Task Groups that discard the results of its child tasks".
+ 
+ What is the benefit of this? Memory! Child tasks stared with `addTask` are not kept to be called with `.next()`, allowing quick and efficient memory release. A discarding group waits for all of its tasks to finish before returning, even if it has throwing tasks. When it returns, it is always empty, unless the main body kept something, like the count of added tasks.
+ 
+ Here is example:
+ ```
+ let addedTasks = await withDiscardingTaskGroup(returning: Int.self) { group in
+   var addedTasks = 0
+   (0..<5).forEach { index in
+       if index % 2 == 0 {
+           group.addTask {
+               print("index: \(index)")
+           }
+           addedTasks += 1
+       }
+   }
+   return addedTasks
+ }
+ ```
+ 
+ Notice that the above one does not use `try` and the added tasks cannot throw. In order to run throwing tasks, we need to use: `withThrowingDiscardingTaskGroup`.
+ 
+ #### Cancellation
+ 
+ Cancellation happens recursively over its child tasks as this is a structured concurrency primitive, so running `cancelAll()` cancels tasks.
+ 
+ #### When to use?
+ 
+ It makes sense to use when one needs different concurrent tasks executed without worrying about results, only about the final success state.
+ 
+ One example is waiting for notifications. See the Notifications extension in the repository in order to see how an `AsyncSequence` and a `DiscardingTaskGroup` can be used to handle triggered notifications.
+ 
+ #### Errors
+ 
+ The discarding task group does not keep a memory, so it cannot store an error to throw it later (or not), so it throws it the moment it gets it. It does not cancel tasks that already started, it allows them to complete, but does not start new ones. 
+ This is a crucial difference between `withThrowingTaskGroup` and `withThrowingDiscardingTaskGroup`. The first one keeps the error and throws it if it is unwrapped with `next()`, but the second one cannot do that because it does not access memory, so it throws it immediately.
+ 
+   
