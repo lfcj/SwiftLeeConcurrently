@@ -372,7 +372,7 @@ Both `async let` and `TaskGroup` are very useful options to run tasks asynchrono
 
 | Characteristic | `async let`  | `Task Group` |
 | ------------- | ------------- | ------------- |
-| **It is bound to the scope where it is created **| Yes  | No  |
+| **It is bound to the scope where it is created**| Yes  | No  |
 | **How does cancellation happen?**| It happens when scope is left  | Needs to happen manually  |
 | **How are errors handled?**| It stops after the first error and throws it | It can ignore errors or throw them, it has control over them |
  
