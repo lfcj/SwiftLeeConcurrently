@@ -418,3 +418,30 @@ Both `async let` and `TaskGroup` are very useful options to run tasks asynchrono
  This is a crucial difference between `withThrowingTaskGroup` and `withThrowingDiscardingTaskGroup`. The first one keeps the error and throws it if it is unwrapped with `next()`, but the second one cannot do that because it does not access memory, so it throws it immediately.
  
    
+### [Structured vs. Unstructured Tasks](https://avanderlee.com/courses/wp/swift-concurrency/structured-vs-unstructured-tasks/)
+
+| Characteristic | Structured Tasks  | Unstructured Tasks |
+| ------------- | ------------- | ------------- |
+| **Inherits context and lifecycle from parent**| Yes, their scope is tied to an existing task, task group or actor  | No  |
+| **Is execution flow predictable?**| Yes, meaning the compiler makes sure structured concurrency rules are ensured, which diminishes risks of data leaks  | No  |
+| **Do they share a cancellation state?**| Yes, they can respect it using `Task.checkCancellation()`, which means they will be cancelled if parent tasks are cancelled. | No |
+
+#### Structured Concurrency Tools
+
+| Structured  | Unstructured |
+| ------------- | ------------- |
+| `async let` | `Task { }` – inherits context and explicit cancellation status but not lifetime  |
+| `withTaskGroup` / `withThrowingTaskGroup`  | `Task.detached { }` – completely independent   |
+| `withDiscardingTaskGroup` / `withThrowingDiscardingTaskGroup` |
+
+#### What are "structured concurrency rules"?
+
+- **Parent-Child Task Hierarchy:** Child tasks inherit priority, context and task-local values from parent task. Parent tasks cannot finish until all child tasks are done.
+- **Automatic Cancellation Propagation:** Parent tasks propagate their cancellation status to their child tasks and they get cancelled **immediately**, even if they do not have code that respects the parent's cancellation status.
+- **Scoped Lifetime:** Tasks cannot outlive their scope, they must finish before their scope ends.
+- **Error propagation up the hierarchy:** Errors from tasks automatically propagate to parent tasks.
+- **No Orphaned Tasks:** Every task has a parent, a.k.a: a clear owner.
+
+All of the above secure structured flow of code, efficient resource management, less risk of data leaks/races, assured cancellation where needed (no zombie tasks), higher chances all errors are handled as they are bubbled up.
+
+> The key is to use structured concurrency by default and only break out when you have a specific need for tasks with independent lifetimes.
