@@ -500,3 +500,21 @@ Here is a small table to practice guessing the set priority:
 | ```Task(priority: .background) { print("This task runs with a background priority: \(Task.currentPriority)") }``` | `.background` |
 | ```func getCurrentTaskPriority() -> TaskPriority { Task.currentPriority }\nTask(priority: .utility) { async let taskPriority = getCurrentTaskPriority() }``` | `.utility` | 
 
+### (Task.sleep() vs. Task.yield())[https://avanderlee.com/courses/wp/swift-concurrency/task-sleep-vs-task-yield/]
+
+Both `.sleep` and `.yield` can be used to _stop_ a task for a certain period of time.
+
+**.sleep does not sleep the block the underlying thread**, it just allows low priority tasks to be executed **for a certain time**. A common use case is to sleep a thread that reacts to user input (debouncing), like running a search after a user types. Other uses are polling APIs are intervals, limiting network requests using a rate, or artificial delays for UI testing.
+ The code is like this one:
+
+```
+try await Task.sleep(for: .milliseconds(500))
+```
+
+This (code)[https://github.com/AvdLee/Swift-Concurrency-Course/blob/main/Sample%20Code/Module%203%20-%20Tasks/ConcurrencyTasks/ConcurrencyTasks/Views/Task%20Sleep%20Example/ArticleSearcher.swift] shows how to use manual or automatically cancelled tasks that sleep for 500 ms before performing a search in order to allow the user type.
+
+**.yield suspends the current task and allows others to execute**. It might suspend the task for a long time in order to execute higher priority tasks, or it might not even suspend it at all if the calling task is the one with the highest priority at the moment. 
+
+There are no many situations in which `.yield` is a better option than `.sleep`, except for tests in asynchronous code, in which one wants to try and force threads to run in a certain order, hence assuring determinism: a must for tests. 
+
+>  The duration of suspension is fixed for Task.sleep() and indeterminate for Task.yield(), both are non-blocking for their respective threads. .sleep can be cancelled and .yield only yields control.
