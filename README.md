@@ -495,18 +495,8 @@ Here is a small table to practice guessing the set priority:
 
 | Code  | `Task.currentPriority` |
 | ------------- | ------------- |
-| ```Task {
-            print("Default task priority: \(Task.currentPriority)")
-        }``` | Can be `.medium`, in general, but can also be `.high` as `Task` inherits the priority from its context. |
-| ```Task.detached {
-            print("Default task priority: \(Task.currentPriority)")
-        }```  | `.medium`   |
-| ```Task(priority: .background) {
-            print("This task runs with a background priority: \(Task.currentPriority)")
-        }``` | `.background` |
-| ```func getCurrentTaskPriority() -> TaskPriority { Task.currentPriority }
-    Task(priority: .utility) {
-            async let taskPriority = getCurrentTaskPriority()
-        }``` | `.utility` | 
-| | |
+| ```Task { print("Default task priority: \(Task.currentPriority)") }``` | Can be `.medium`, in general, but can also be `.high` as `Task` inherits the priority from its context. |
+| ```Task.detached { print("Default task priority: \(Task.currentPriority)") }```  | `.medium`   |
+| ```Task(priority: .background) { print("This task runs with a background priority: \(Task.currentPriority)") }``` | `.background` |
+| ```func getCurrentTaskPriority() -> TaskPriority { Task.currentPriority }\nTask(priority: .utility) { async let taskPriority = getCurrentTaskPriority() }``` | `.utility` | 
 
