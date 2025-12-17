@@ -42,7 +42,9 @@ struct SomeView: View {
     var body: some View {
         Text("Hello world: \(addedTasks)")
             .task {
-                await runThrowingTask()
+                Task.detached {
+                    print("Default task priority: \(Task.currentPriority)")
+                }
             }
     }
 

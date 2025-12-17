@@ -1,5 +1,7 @@
 # Swiftlee Concurrency - Swift 6
 
+These are the notes for (AvdLee's Swift Concurrency Code)[https://github.com/AvdLee/Swift-Concurrency-Course/tree/main]
+
 What started in Swift 5 as implementing the ideas behind Lattner's Manifesto, has now continued with Swift 6.
 
 Its goal is to eliminate all data races and help code become more predictable, reducing unexpected runtime issues.
@@ -445,3 +447,66 @@ Both `async let` and `TaskGroup` are very useful options to run tasks asynchrono
 All of the above secure structured flow of code, efficient resource management, less risk of data leaks/races, assured cancellation where needed (no zombie tasks), higher chances all errors are handled as they are bubbled up.
 
 > The key is to use structured concurrency by default and only break out when you have a specific need for tasks with independent lifetimes.
+
+### (Managing Task Priorities)[https://avanderlee.com/courses/wp/swift-concurrency/managing-task-priorities/]
+
+
+Swift 6 wants us to not think about threads as we do not know in which thread a task is running. It invites us to try mainly focus on priorities.
+
+#### What are default task priorities?
+
+All tasks, except detached ones, inherit their priority from the context in which they are created. Running just `Task {}`, for example, we do not know which `Task.getCurrentTaskPriority` would be printed here:
+
+```
+Task {
+    print("Current task priority: \(Task.currentPriority)")
+}
+```
+
+If it is launched from within a SwiftUI view, then it would be `.userInitiated`, which is the same as `.high` (as of today and given their `rawValue` is the same one, but that can change in the future). 
+
+A detached priority, however, would still print `.medium`. even if it is launched from a `.high` environment. The reason is because it is a complete unstructured tool that acts completely independent and does not inherit any context.
+
+Here is a list of all priority levels currently available:
+
+- `.userInitiated`: Default for tasks triggered by user actions, like loading data.
+- `.utility`: Used for longer-running tasks that don’t require immediate results.
+- `.background`: Ideal for low-priority work like caching or prefetching.
+- `.high`: Used for tasks that require immediate user feedback.
+- `.medium`: Used for tasks that don’t require immediate results, similar to utility.
+- `.low`: Similar to the background priority.
+
+#### Do priorities change during execution?
+
+Not always, but they can and the executor is responsible for it. 
+
+In cases in which the result of a task with low priority is needed by a task with high priority, the executor temporarily elevates the priority of the low-prio task to make sure the more urgent one does not suffer delays: the so called "priority-inversion".
+
+
+#### What are the executors?
+
+Executors are Swift's schedulers. They decide when a task is run taking priorities and resources into account. Actors, for example, have their own executor to make sure no data races happen.
+
+> Executors in Swift Concurrency prevent race conditions, optimize performance, and help us avoid priority inversions.
+
+**Priorities are only hints for the systems, they are not guarantees. The best option is to use the default task to let the executor decide. Try to set priorities when really sure of the high/low urgency.**
+
+Here is a small table to practice guessing the set priority:
+
+| Code  | `Task.currentPriority` |
+| ------------- | ------------- |
+| ```Task {
+            print("Default task priority: \(Task.currentPriority)")
+        }``` | Can be `.medium`, in general, but can also be `.high` as `Task` inherits the priority from its context. |
+| ```Task.detached {
+            print("Default task priority: \(Task.currentPriority)")
+        }```  | `.medium`   |
+| ```Task(priority: .background) {
+            print("This task runs with a background priority: \(Task.currentPriority)")
+        }``` | `.background` |
+| ```func getCurrentTaskPriority() -> TaskPriority { Task.currentPriority }
+    Task(priority: .utility) {
+            async let taskPriority = getCurrentTaskPriority()
+        }``` | `.utility` | 
+| | |
+
