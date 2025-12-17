@@ -518,3 +518,11 @@ This (code)[https://github.com/AvdLee/Swift-Concurrency-Course/blob/main/Sample%
 There are no many situations in which `.yield` is a better option than `.sleep`, except for tests in asynchronous code, in which one wants to try and force threads to run in a certain order, hence assuring determinism: a must for tests. 
 
 >  The duration of suspension is fixed for Task.sleep() and indeterminate for Task.yield(), both are non-blocking for their respective threads. .sleep can be cancelled and .yield only yields control.
+
+### (Task local storage using @TaskLocal)[https://avanderlee.com/courses/wp/swift-concurrency/task-local-storage-using-tasklocal/]
+
+`@TaskLocal` is a wrapper that allows us to set a local variable to be used within a certain scope. As always, it is not inherited by detached tasks.
+
+VdLee does not advice on using these properties as the risk of accessing it when it is no longer available is high and passing a pass-by-value variable is safer and has the same effect.
+
+ 
