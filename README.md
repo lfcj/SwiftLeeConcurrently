@@ -525,4 +525,18 @@ There are no many situations in which `.yield` is a better option than `.sleep`,
 
 VdLee does not advice on using these properties as the risk of accessing it when it is no longer available is high and passing a pass-by-value variable is safer and has the same effect.
 
+ ### (Running tasks in SwiftUI)[https://avanderlee.com/courses/wp/swift-concurrency/running-tasks-in-swiftui/]
  
+ `.task` is a very useful modifier to run asynchronous tasks tied to the lifecycle of a view. SwiftUI takes care of cancelling them when the view disappears. 
+ 
+ It is important to know it is launched _before_ the view appears, so if our task modifies the view model, there needs to be a way to avoid unwanted changes before showing the view (e.g.: when using a search to filter lists, do not filter if the search query is empty).
+ 
+ It is also good to notice this `.task` only runs once per view appearance. One way to make sure it runs again is to tie it to a changing ID. In the case of a search, it can be the search query, which will change when the user types. Example:
+ 
+ ```
+ .task(id: searchQuery) {
+    await articleSearcher.search(searchQuery)
+}
+ ```
+ 
+ Another option is to set the priority of the associated `.task`. The current default one for SwiftUI is `.userInitiated`, currently equivalent to `.high`, but we could want to log analytics with `.task(priority: .low)`
