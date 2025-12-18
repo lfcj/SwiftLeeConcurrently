@@ -59,7 +59,7 @@ public final class NetworkOperatorPerformer {
 
     // MARK: - Init/De-Init
 
-    public init(networkMonitor: NetworkMonitoring) {
+    public init(networkMonitor: NetworkMonitoring = NetworkMonitor()) {
         self.networkMonitor = networkMonitor
         self.networkMonitor.start()
     }
