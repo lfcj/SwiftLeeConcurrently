@@ -540,3 +540,11 @@ VdLee does not advice on using these properties as the risk of accessing it when
  ```
  
  Another option is to set the priority of the associated `.task`. The current default one for SwiftUI is `.userInitiated`, currently equivalent to `.high`, but we could want to log analytics with `.task(priority: .low)`
+
+### (Task timeout handler using Task Groups)[https://avanderlee.com/courses/wp/swift-concurrency/creating-a-task-timeout-handler-using-a-task-group/]
+
+Task groups can be used creatively to create timeouts. By letting one of the tasks `.sleep(timeoutDuration)`, if that one is the first one to finish when one calls `group.next()`, then the timeout ended and the other task was not finished.
+
+I used the example given by AdLee in the link above in order to run an operation **only** if the network is available. If the network does not become available during the timeout, then the operation is not executed.
+
+Check out the (`NetworkOperationPerformer`)[https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrently/NetworkOperatorPerformer.swift] to see the details. The tests are also given [here](https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrentlyTests/NetworkPerformerTests.swift).
