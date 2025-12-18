@@ -548,3 +548,67 @@ Task groups can be used creatively to create timeouts. By letting one of the tas
 I used the example given by AdLee in the link above in order to run an operation **only** if the network is available. If the network does not become available during the timeout, then the operation is not executed.
 
 Check out the (`NetworkOperationPerformer`)[https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrently/NetworkOperatorPerformer.swift] to see the details. The tests are also given [here](https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrentlyTests/NetworkPerformerTests.swift).
+
+## Sendable
+
+### (Isolation Domains)[https://avanderlee.com/courses/wp/swift-concurrency/explaining-the-concept-of-sendable-in-swift/]
+
+The key here is not the protocol itself, but understanding that Swift does not care so much about threads, but about **isolation domains**. When an value or reference is passed between these domains, the compiler needs to know that it is _Sendable_ in order to guarantee thread-safetyness.
+
+> An **isolation domain** defines a boundary within which a value or reference can be safely accessed without data races. These domains prevent concurrent modifications by ensuring that code executes in a controlled environment.
+
+There are three types of isolation domains:
+
+#### `nonisolated`
+
+Default for all code. It means it does not modify any shared state. Therefore, it cannot modify states from other isolated domains. Nonisolated code can be called from any thread. An example could be:
+
+```func sum(a: Int, b: Int) { a + b }```
+
+#### `actor-isolated`
+
+All properties inside of an actor are actor-isolated, meaning they only exist directly within the isolated domain that the actor creates and are thread-safe within it. These properties can be accessed from outside using `async` getters, which makes sure the access is protected.
+
+```
+actor Friends {
+    var names: [String] = []
+
+    func addFriend(_ name: String) {
+        names.append(name)
+    }
+
+    func getFriendsList() -> [String] {
+        return names
+    }
+}
+```
+
+An interesting feature in actors is that one can set a method or variable as `nonisolated` inside an actor. This would allow accessing it without `await`:
+
+```
+actor Friends {
+    nonisolated let title = "Friends"
+}
+``` 
+
+#### `global-actor`
+
+It is the same as `actor-isolated`, but instead of providing access to methods, types and variables to only one isolated domain / actor, it provides a shared location domain. This is useful for different components of an app that need to be on the same level, like UI, which uses `@MainActor`
+
+#### Can values travel between isolation domains?
+
+Yes, and the trick is that they are `Sendable`. Value types are already `Sendable` by default, because they do not mutate. Reference values are not because they can mutate.
+
+So, knowing an `Int` is `Sendable`, we know this struct:
+
+```
+struct A { var count: Int }
+``` 
+is `Sendable` by default.
+
+```
+class A { var count: Int }
+```
+is not.
+
+### [Data Races vs. Race Conditions](https://avanderlee.com/courses/wp/swift-concurrency/understanding-data-races-vs-race-conditions-key-differences-explained/)
