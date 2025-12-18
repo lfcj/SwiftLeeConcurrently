@@ -9,15 +9,12 @@ struct NetworkPerformerTests {
     @Test("If the network is initially available, the given closure is invoked")
     func given_availableNetwork_closureIsInvoked() async throws {
         // GIVEN
-        let networkMonitor = FakeNetworkMonitoring()
-        networkMonitor.isNetworkAvailable = true
-        let networkPerformer = NetworkOperatorPerformer(
-            networkMonitor: networkMonitor
-        )
+        let networkMonitor = FakeNetworkMonitoring(isNetworkAvailable: true)
+        let networkPerformer = NetworkOperatorPerformer(networkMonitor: networkMonitor)
 
         // WHEN
         let result = await networkPerformer.invokeUponNetworkAccess(
-            within: .seconds(0),
+            within: .seconds(1),
             { "Invoked!" }
         )
 
@@ -28,20 +25,15 @@ struct NetworkPerformerTests {
 
     @Test(
         """
-         If the network is initially not available and does not become available, timeout error is throws
+         If the network is initially not available and does not become available, timeout error is thrown
         """
     )
     func given_unavailableNetwork_timeOutPassErrorIsThrows_AfterTimeout() async {
         // GIVEN
-        let networkMonitor = FakeNetworkMonitoring()
-        networkMonitor.isNetworkAvailable = false
-        let timerSubject = PassthroughSubject<Date, Never>()
+        let networkMonitor = FakeNetworkMonitoring(isNetworkAvailable: false)
         let networkPerformer = NetworkOperatorPerformer(networkMonitor: networkMonitor)
 
         // WHEN
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            timerSubject.send(Date())
-        }
         let result = await networkPerformer.invokeUponNetworkAccess(
             within: .seconds(0.5),
             { "Timeout passed" }
@@ -63,14 +55,12 @@ struct NetworkPerformerTests {
     )
     func given_unavailableNetwork_whenAvailableWithinTimeout_thenClosureIsInvoked() async throws {
         // GIVEN
-        let networkMonitor = FakeNetworkMonitoring()
-        networkMonitor.isNetworkAvailable = false
+        let networkMonitor = FakeNetworkMonitoring(isNetworkAvailable: false)
         let networkPerformer = NetworkOperatorPerformer(networkMonitor: networkMonitor)
 
         // WHEN
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            networkMonitor.isNetworkAvailable = true
-            networkMonitor.networkStatusStream = AsyncStream(unfolding: { true })
+            networkMonitor.continuation?.yield(true)
         }
 
         let result = await networkPerformer.invokeUponNetworkAccess(
@@ -89,9 +79,18 @@ struct NetworkPerformerTests {
 }
 
 final class FakeNetworkMonitoring: NSObject, NetworkMonitoring {
-    var networkStatusStream: AsyncStream<Bool> = AsyncStream(unfolding: { false })
-    
-    var isNetworkAvailable: Bool = false
+    let continuation: AsyncStream<Bool>.Continuation?
+    var connectionUpdates: AsyncStream<Bool>
+
+    init(isNetworkAvailable: Bool = false) {
+        var cont: AsyncStream<Bool>.Continuation?
+        connectionUpdates = AsyncStream { continuation in
+            cont = continuation
+            continuation.yield(isNetworkAvailable)
+        }
+        self.continuation = cont
+        super.init()
+    }
     func start() {}
 }
 
@@ -102,6 +101,10 @@ extension NetworkOperationExecutionError: @retroactive Equatable {
         case (.timeoutPassed, .timeoutPassed):
             return true
         case (.missingValue, .missingValue):
+            return true
+        case (.deallocatedSelf, .deallocatedSelf):
+            return true
+        case (.networkStatusStreamClosed, .networkStatusStreamClosed):
             return true
         case (.unknownError(let lhsError), .unknownError(let rhsError)):
             return lhsError as NSError == rhsError as NSError

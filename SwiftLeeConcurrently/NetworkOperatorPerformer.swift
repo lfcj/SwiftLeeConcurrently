@@ -3,40 +3,40 @@ import Foundation
 import Network
 
 public protocol NetworkMonitoring: NSObject, Sendable {
-    var isNetworkAvailable: Bool { get async }
-    var networkStatusStream: AsyncStream<Bool> { get }
+    var connectionUpdates: AsyncStream<Bool> { get }
     func start()
 }
 
 public enum NetworkOperationExecutionError: Error {
     case timeoutPassed
     case missingValue
+    case deallocatedSelf
+    case networkStatusStreamClosed
     case unknownError(Error)
 }
 
 public actor NetworkMonitor: NSObject, NetworkMonitoring {
-    private var _isNetworkAvailable: Bool = false
-    public var isNetworkAvailable: Bool {
-        _isNetworkAvailable
-    }
+    
+    nonisolated public let connectionUpdates: AsyncStream<Bool>
 
-    // Use AsyncStream instead of Combine
-    public let networkStatusStream: AsyncStream<Bool>
-    private var statusContinuation: AsyncStream<Bool>.Continuation?
-
+    private var continuation: AsyncStream<Bool>.Continuation?
+    
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "NWMonitor")
     
     public override init() {
-        let (stream, continuation) = AsyncStream<Bool>.makeStream()
-        self.networkStatusStream = stream
-        self.statusContinuation = continuation
+        var cont: AsyncStream<Bool>.Continuation?
+        connectionUpdates = AsyncStream { continuation in
+            cont = continuation
+        }
+        super.init()
+        self.continuation = cont
     }
     
     nonisolated public func start() {
         monitor.pathUpdateHandler = { [weak self] path in
             let isAvailable = path.status == .satisfied
-            Task {
+            Task(priority: .high) {
                 await self?.updateNetworkStatus(isAvailable)
             }
         }
@@ -44,8 +44,7 @@ public actor NetworkMonitor: NSObject, NetworkMonitoring {
     }
     
     private func updateNetworkStatus(_ available: Bool) {
-        _isNetworkAvailable = available
-        statusContinuation?.yield(available)
+        continuation?.yield(available)
     }
 }
 
@@ -73,11 +72,16 @@ public final class NetworkOperatorPerformer {
         do {
             return try await withThrowingTaskGroup(returning: Result<T, NetworkOperationExecutionError>.self) { group in
                 _ = group.addTaskUnlessCancelled { [weak self] in
-                    while await self?.networkMonitor.isNetworkAvailable ==  false {
-                        try await Task<Never, Never>.sleep(for: .milliseconds(200), clock: .continuous)
+                    guard let self = self else {
+                        return Result<T, NetworkOperationExecutionError>.failure(.deallocatedSelf)
                     }
-                    let result = await closure()
-                    return Result<T, NetworkOperationExecutionError>.success(result)
+                    for await isNetworkAvailable in await self.networkMonitor.connectionUpdates {
+                        if isNetworkAvailable {
+                            let result = await closure()
+                            return Result<T, NetworkOperationExecutionError>.success(result)
+                        }
+                    }
+                    return Result<T, NetworkOperationExecutionError>.failure(.networkStatusStreamClosed)
                 }
 
                 _ = group.addTaskUnlessCancelled {
