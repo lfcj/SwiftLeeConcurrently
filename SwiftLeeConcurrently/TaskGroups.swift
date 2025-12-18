@@ -2,8 +2,8 @@ import Foundation
 import SwiftUI
 
 struct TaskGroups {
-    func notCancellingOtherTasks() async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
+    func notCancellingOtherTasks() async {
+        await withThrowingTaskGroup(of: Void.self) { group in
             (0..<5).forEach { index in
                 group.addTask {
                     if index == 3 {
@@ -57,11 +57,7 @@ struct SomeView: View {
     }
 
     func runNonThrowingTask() async {
-        do {
-            try await TaskGroups().notCancellingOtherTasks()
-        } catch {
-            print("Rethrown error: \(error)")
-        }
+        await TaskGroups().notCancellingOtherTasks()
     }
 }
 #Preview {
