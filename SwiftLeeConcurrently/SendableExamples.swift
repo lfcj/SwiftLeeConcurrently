@@ -1,3 +1,3 @@
-class PersonViewModel: Sendable {
+class PersonViewModel {
     var personName: String! = "Default"
 }

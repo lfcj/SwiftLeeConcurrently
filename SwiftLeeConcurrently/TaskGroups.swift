@@ -60,6 +60,7 @@ struct SomeView: View {
         await TaskGroups().notCancellingOtherTasks()
     }
 }
+extension PersonViewModel: Sendable {}
 #Preview {
     SomeView()
 }
