@@ -612,3 +612,47 @@ class A { var count: Int }
 is not.
 
 ### [Data Races vs. Race Conditions](https://avanderlee.com/courses/wp/swift-concurrency/understanding-data-races-vs-race-conditions-key-differences-explained/)
+
+A **data race** is when different and multiple threads try to access shared data at the same time without mutual exclusion. The outcome is non-deterministic and can lead to errors or even crashes, so compiler is not happy and would complain in the following code when one turns the Thread Sanitizer on:
+
+```
+var counter = 0
+let queue = DispatchQueue.global(qos: .background)
+
+for _ in 1...10 {
+    queue.async {
+       counter += 1
+    }
+}
+
+print("Final counter value: \(counter)")
+```
+
+**Race conditions** happen when multiple threads access shared data at the same time respecting mutual exclusion, but without properly synchronising. This is non-deterministic and can lead to errors. Compilers are happy, engineers maintaining flaky tests: less. 
+
+In the following example, the compiler is happy because the actor protects the `Counter`s value from data races, but output can be different every time.
+
+```
+actor Counter {
+    private var value = 0
+
+    func increment() {
+        value += 1
+    }
+    
+    func getValue() -> Int {
+        return value
+    }
+}
+
+let counter = Counter()
+
+for _ in 1...10 {
+    Task {
+        await counter.increment() // Safely increments the counter
+    }    
+}
+
+// Read is safe, but outcome is not deterministic.
+print("Final counter value: \(await counter.getValue())")
+```
