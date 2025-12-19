@@ -656,3 +656,20 @@ for _ in 1...10 {
 // Read is safe, but outcome is not deterministic.
 print("Final counter value: \(await counter.getValue())")
 ```
+
+### (Conforming to Sendable)[https://avanderlee.com/courses/wp/swift-concurrency/conforming-your-code-to-the-sendable-protocol/]
+
+In a few words, `Sendable` is a protocol that tells the compiler that an object can be passed between isolation domains without worrying about mutual exclusion or data races.
+
+The following is automatically `Sendable` and can be marked as such:
+
+- Reference types that only have non-mutable variables
+- Reference types that protect their mutable variables with locks (`@unchecked Sendable` is needed here.)
+- structs or enum types because they are value types.
+
+#### What is @unchecked Sendable
+
+In cases in which we want to add conformance to `Sendable` from another module, the compiler will complain because there is the chance it does not have complete visibility over variables of the class (internal variables can exist). This means that it can not be sure objects have a complete thread-safe status. 
+If we are sure ourselves, we can use `@unchecked Sendable` and make sure all variables are safe.
+
+
