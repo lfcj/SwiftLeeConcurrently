@@ -64,6 +64,7 @@ public final class NetworkOperatorPerformer {
 
     // MARK: - Init/De-Init
 
+    /// Use a new instance of `NetworkMonitor` every time, as the current stream used to notify when network is available does not broadcast.
     public init(networkMonitor: NetworkMonitoring = NetworkMonitor()) {
         self.networkMonitor = networkMonitor
         self.networkMonitor.start()
