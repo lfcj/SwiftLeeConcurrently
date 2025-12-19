@@ -46,6 +46,12 @@ public actor NetworkMonitor: NSObject, NetworkMonitoring {
     private func updateNetworkStatus(_ available: Bool) {
         continuation?.yield(available)
     }
+
+    deinit {
+        monitor.cancel()
+        continuation?.finish()
+    }
+
 }
 
 public final class NetworkOperatorPerformer {
