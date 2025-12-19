@@ -673,3 +673,20 @@ In cases in which we want to add conformance to `Sendable` from another module, 
 If we are sure ourselves, we can use `@unchecked Sendable` and make sure all variables are safe.
 
 
+### (Sendable and Value Types)[https://avanderlee.com/courses/wp/swift-concurrency/sendable-and-value-types/]
+
+Value types are copied-by-value types, which makes them `Sendable` already because they are not mutable. This includes `structs`, `enum`s, `tuple`s and basic data types like `Int`, `String`, `Double` and `Bool`. They are implicitly `Sendable`.
+
+#### When are enums or structs NOT Sendable implicitly?
+
+When an `enum` or a `struct` are marked `public` or with `@usableFromInline`, they are not implicitly `Sendable`. If we want them to be `Sendable`, it has to be written explicitly.
+
+Why?
+
+Because when a struct or enum is shared publicly, the compiler does not have access to hidden details, such as private variables. This makes that it cannot guarantee the objects are thread-safe by default, so `Sendable` is needed explicitly. This makes sure that the compiler that compiled the module containing that struct made sure that private properties were also thread-safe.
+
+An enum or struct can be part of frameworks or packages and accessed when they are public. In these cases, the 'client' that uses the dependency relies on types already being `Sendable` or not. If one was _implicitly_ `Sendable` and a new version means it is no longer the case, then the user of the framework will have a problem. That is a reason Swift Compilers require public value types to be explicitly marked as `Sendable`. 
+
+**public** enums and structs are implicitly Sendable _when they are @frozen_. This allows the compiler to know ahead of time that there will not be changes, so if the current mutable variables are thread-safe, the objects will be it as well.
+
+ 
