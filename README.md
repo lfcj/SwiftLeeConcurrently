@@ -448,7 +448,7 @@ All of the above secure structured flow of code, efficient resource management, 
 
 > The key is to use structured concurrency by default and only break out when you have a specific need for tasks with independent lifetimes.
 
-### (Managing Task Priorities)[https://avanderlee.com/courses/wp/swift-concurrency/managing-task-priorities/]
+### [Managing Task Priorities](https://avanderlee.com/courses/wp/swift-concurrency/managing-task-priorities/)
 
 
 Swift 6 wants us to not think about threads as we do not know in which thread a task is running. It invites us to try mainly focus on priorities.
@@ -500,7 +500,7 @@ Here is a small table to practice guessing the set priority:
 | ```Task(priority: .background) { print("This task runs with a background priority: \(Task.currentPriority)") }``` | `.background` |
 | ```func getCurrentTaskPriority() -> TaskPriority { Task.currentPriority }\nTask(priority: .utility) { async let taskPriority = getCurrentTaskPriority() }``` | `.utility` | 
 
-### (Task.sleep() vs. Task.yield())[https://avanderlee.com/courses/wp/swift-concurrency/task-sleep-vs-task-yield/]
+### [Task.sleep() vs. Task.yield()](https://avanderlee.com/courses/wp/swift-concurrency/task-sleep-vs-task-yield/)
 
 Both `.sleep` and `.yield` can be used to _stop_ a task for a certain period of time.
 
@@ -519,13 +519,13 @@ There are no many situations in which `.yield` is a better option than `.sleep`,
 
 >  The duration of suspension is fixed for Task.sleep() and indeterminate for Task.yield(), both are non-blocking for their respective threads. .sleep can be cancelled and .yield only yields control.
 
-### (Task local storage using @TaskLocal)[https://avanderlee.com/courses/wp/swift-concurrency/task-local-storage-using-tasklocal/]
+### [Task local storage using @TaskLocal](https://avanderlee.com/courses/wp/swift-concurrency/task-local-storage-using-tasklocal/)
 
 `@TaskLocal` is a wrapper that allows us to set a local variable to be used within a certain scope. As always, it is not inherited by detached tasks.
 
 VdLee does not advice on using these properties as the risk of accessing it when it is no longer available is high and passing a pass-by-value variable is safer and has the same effect.
 
- ### (Running tasks in SwiftUI)[https://avanderlee.com/courses/wp/swift-concurrency/running-tasks-in-swiftui/]
+ ### [Running tasks in SwiftUI](https://avanderlee.com/courses/wp/swift-concurrency/running-tasks-in-swiftui/)
  
  `.task` is a very useful modifier to run asynchronous tasks tied to the lifecycle of a view. SwiftUI takes care of cancelling them when the view disappears. 
  
@@ -541,7 +541,7 @@ VdLee does not advice on using these properties as the risk of accessing it when
  
  Another option is to set the priority of the associated `.task`. The current default one for SwiftUI is `.userInitiated`, currently equivalent to `.high`, but we could want to log analytics with `.task(priority: .low)`
 
-### (Task timeout handler using Task Groups)[https://avanderlee.com/courses/wp/swift-concurrency/creating-a-task-timeout-handler-using-a-task-group/]
+### [Task timeout handler using Task Groups](https://avanderlee.com/courses/wp/swift-concurrency/creating-a-task-timeout-handler-using-a-task-group/)
 
 Task groups can be used creatively to create timeouts. By letting one of the tasks `.sleep(timeoutDuration)`, if that one is the first one to finish when one calls `group.next()`, then the timeout ended and the other task was not finished.
 
@@ -551,7 +551,7 @@ Check out the (`NetworkOperationPerformer`)[https://github.com/lfcj/SwiftLeeConc
 
 ## Sendable
 
-### (Isolation Domains)[https://avanderlee.com/courses/wp/swift-concurrency/explaining-the-concept-of-sendable-in-swift/]
+### [Isolation Domains](https://avanderlee.com/courses/wp/swift-concurrency/explaining-the-concept-of-sendable-in-swift/)
 
 The key here is not the protocol itself, but understanding that Swift does not care so much about threads, but about **isolation domains**. When an value or reference is passed between these domains, the compiler needs to know that it is _Sendable_ in order to guarantee thread-safetyness.
 
