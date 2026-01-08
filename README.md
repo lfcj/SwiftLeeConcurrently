@@ -689,4 +689,107 @@ An enum or struct can be part of frameworks or packages and accessed when they a
 
 **public** enums and structs are implicitly Sendable _when they are @frozen_. This allows the compiler to know ahead of time that there will not be changes, so if the current mutable variables are thread-safe, the objects will be it as well.
 
- 
+#### Sendable and actors.
+
+One way to implicitly mark a value type as `Sendable` is by tying it to an actor. The most common way is using `@MainActor` as this would make sure that only that actor can access variables within the object and thread-safety would be given.
+
+ ### (Sendable and Reference Types)[https://avanderlee.com/courses/wp/swift-concurrency/sendable-and-reference-types/]
+
+A reference type is never implicitly `Sendable` per se, only when using actors. Reference types are shared by sharing a reference, so changes to the objects change the object that all components have access to. Besides classes, these are other reference types in Swift:
+
+- Closures
+- Actors
+- Metatypes (`Type` & `AnyClass`)
+- Protocol with `AnyClass` or object constraints
+- NSObjects
+- References through UnsafePointer & Unmanaged
+
+In order to have a reference type conform to `Sendable`, our type needs to:
+
+1. Be `final`
+2. Contain only non-mutable properties or already `Sendable` ones.
+3. Have `NSObject` as superclass or none.
+
+If these three are not fulfilled, it is necessary to add `@unchecked Sendable` or synchronize access using locks.
+
+Dealing with `Sendable` reference types is added effort, so before creating one, consider these steps:
+
+- Can I make this class a structure instead?
+- Does this class need to be mutable and non-final?
+- Is this class mainly used from the main thread and should it be marked with @MainActor instead?
+
+**Why can't a non-final class be `Sendable`?'** Because its children could compromise thread-safety
+
+### (Sendable and closures)[https://avanderlee.com/courses/wp/swift-concurrency/using-sendable-with-closures/]
+
+Closures are reference types that cannot conform to protocols at the moment, but are also very valuable types in programming with Swift.
+
+In case in which we have an `actor` that guarantees already thread-safety, we might want to create methods that perform background work, like performing all planned transactions that are due today:
+
+```
+actor BankAccount {
+    private(set) var money: Int = 0
+    private let plannedTransactions: [PlannedTransaction] = []
+
+    func transferMoney(_ amount: Int) {
+        money -= amount
+    }
+
+    nonisolated func performMonthlyTransaction(_ canHappen: @escaping (PlannedTransaction) -> Bool) async {
+        plannedTransactions.forEach { plannedTransaction in
+            Task {
+                if canHappen(plannedTransaction) {
+                    await transferMoney(plannedTransaction.amount)
+                }
+            }
+        }
+    }
+}
+```
+
+The error `Passing closure as a 'sending' parameter risks causing data races between code in the current task and concurrent execution of the closure` appears because we're sending a function from a task-isolation domain to an actor-isolation domain.
+
+We'd need the task-isolation domain to conform to `Sendable` to ensure thread-safety, so we do:
+```
+nonisolated func performMonthlyTransaction(_ canHappen: @escaping @Sendable (PlannedTransaction) -> Bool) async {
+    plannedTransactions.forEach { plannedTransaction in
+        Task {
+            if canHappen(plannedTransaction) {
+                await transferMoney(plannedTransaction.amount)
+            }
+        }
+    }
+}
+```
+
+#### Capture-by-value
+
+Whenever we have a closure in which we capture an inmutable value, we can use a list to capture it to comply with the compiler. When we do:
+```
+var someValue: SomeClass
+await doSomething { [someValue] x in}
+```
+
+we capture `someValue`'s current value at that time and cannot not mutate it.
+
+### (@unchecked Sendable)[https://avanderlee.com/courses/wp/swift-concurrency/using-unchecked-sendable/]
+
+The ideal world is that all of our types are `Sendable`, but there can be cases where we know something is thread-safe and cannot conform to `Sendable`, so we need to have the compiler ignore it using `@unchecked Sendable`. 
+
+Even if we use a lock to make sure access is thread-safe, the compiler cannot know we are taking care of that, like this:
+```
+final class Counter {
+    private let cacheMutatingLock = DispatchQueue(label: "cache.lock.queue")
+    private var counter: Int = 0
+
+    func increment() {
+        cacheMutatingLock.sync { counter += 1 }
+    }
+
+    func decrement() {
+        cacheMutatingLock.sync { counter -= 1 }
+    }
+}
+```
+
+`@unchecked` should only be used in very, very safe cases, as data races can be introduced that way. The best way is to migrate to `actor` in order to ensure thread-safety.

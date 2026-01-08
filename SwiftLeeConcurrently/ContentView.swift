@@ -11,7 +11,7 @@ struct ContentView: View {
         .task {
             let viewModel = PersonViewModel()
             Task {
-                viewModel.personName = nil
+                //viewModel.personName = nil // Unlock to cause a crash
             }
             Task {
                 message = viewModel.personName
