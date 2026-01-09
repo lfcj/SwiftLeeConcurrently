@@ -793,3 +793,119 @@ final class Counter {
 ```
 
 `@unchecked` should only be used in very, very safe cases, as data races can be introduced that way. The best way is to migrate to `actor` in order to ensure thread-safety.
+
+### Understanding region-based isolation and the sending keyword
+
+> With region-based isolation, Swift drastically reduces the number of times we’ll have to use Sendable.
+
+There are scenarios in which the compiler can reason that there will not be a data race and does not send a warning, even if a mutable value is shared across domains and is not `Sendable`, like in this case:
+
+````
+public class Person {
+    var name: String
+}
+```
+
+Here `Person` is not `Sendable`, `public` and non-final, so `name` is definitely mutable. But no error is thrown here:
+
+```
+func sendableChecked() {
+    let person = Person(name: "Jane Done")
+    Task { print(person.name) }
+}
+``` 
+That is because the compiler can see that the `person` object is local: it detects an "isolation region".
+
+But, if we add another access after sending this object to the task, like this:
+
+```
+Task { print(person.name) }
+print(person.name)
+```
+
+The error now tells us:
+```
+Passing value of non-Sendable type '() async -> ()' as a 'sending' argument to initializer 'init(name:priority:operation:)' risks causing races in between local and caller code
+```
+because we are calling it after already transferring it to the task's isolation domain. Even though both our usages are reads, the basic logic is that a data race would occur if we access the mutable state from different isolation domains, so there is an error.
+
+#### `sending`
+
+There are scenarios where we are sure there will not be a data race, but the compiler does not agree. `sending` is helpful for these cases as it:
+- makes sure that the value cannot be accessed from the original location after being transferred.
+- prevents race conditions by enforcing ownership transfer.
+- allows for optimized performance by avoiding redundant copies.
+
+In the code above, if we do:
+
+```
+func check(person: sending SimplePerson) {
+    Task {
+        print(person.name)
+    }
+    print(person.name)
+}
+```
+The `sending` moves the local region checks to this inner method's region only and makes sure that the `person` object cannot be accessed from the original called anymore.
+
+Since the isolation region is now the inner method only, the compiler can now see that `person.name` is being read by the task and by the inner method logic's isolation domain, so mutex is not needed -> no data race risk.
+
+However, if we make a change after the Task gets the value:
+
+```
+func check(person: sending SimplePerson) {
+    Task {
+        print(person.name)
+    }
+    person.name = "Other"
+}
+```
+we will get a data-race error again. However, if we make sure that the method and the Task run on the same `MainActor`:
+
+```
+@MainActor
+func check2(person: sending SimplePerson) {
+    Task(priority: .userInitiated) {
+        print(person.name)
+    }
+    person.name = "Hi"
+}
+```
+
+The error becomes a warning as there will not be data race (same isolation domain), but there can be a race condition.
+
+#### Returning with `sending`
+
+We have other cases in which we also want to transfer ownership, especially with actors that have factor methods. In this case, this method is executed by the main actor:
+
+```
+@MainActor
+func makePerson(name: String) -> SimplePerson {
+    SimplePerson(name: name)
+}
+```
+
+and this method wants to use that factory method:
+
+```
+func makePersonAndPrintIt() async {
+    let person = await makePerson(name: "some name")
+}
+```
+And it cannot.
+
+The error being: 
+```
+Non-Sendable 'SimplePerson'-typed result can not be returned from main actor-isolated instance method 'makePerson(name:)' to nonisolated context
+```
+but in this case, we know that transferring domains would not cause a data-race, so the solution would be to let the compiler transfer the ownership:
+
+```
+@MainActor
+func makePerson(name: String) -> sending SimplePerson {
+    SimplePerson(name: name)
+}
+```
+ 
+
+
