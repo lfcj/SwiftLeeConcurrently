@@ -907,5 +907,213 @@ func makePerson(name: String) -> sending SimplePerson {
 }
 ```
  
+### Concurrency-safe global variables
+
+Typical global variables are singletons and there are different ways to make sure the are concurrency-safe, or at least that the compiler does not complain:
+
+1. actor isolation with @MainActor: Big disadvantage is that it is a hassle to call from non-concurrent domains.
+2. Marking a `Sendable`. Great, but not always doable for big codebases.
+3. Dangerous and fast: `nonisolated(unsafe) var shared = Singleton()`, for example. This tells the compiler that we take responsibility for thread safety. Just like with `@unchecked Sendable`, it is better to never use it.
+
+### Combining Sendable with custom Locks
+
+As discussed before, if mutable states are already protected with locks, then the best next step is making sure a migration to actors happen. From:
+
+```
+func increment() {
+    lock.lock()
+    counter += 1
+    lock.unlock()
+}
+```
+
+to an actor:
+
+```
+actor Counter {
+    private var counter = 0
+    func increment() {
+        counter += 1
+    }
+}
+```
+
+But this would mean that any calls to `increment` in the codebase would need to migrate to using `await increment()`, which can be very cumbersome.
+
+For these scenarios, again, the best route is to create a ticket to migrate. The second best option is to mark the class with `@unchecked Sendable`, make it final and make sure mutable states are as private as possible so changes only happen locally.
+
+## Understanding actors in Swift Concurrency
+
+### What is an actor?
+
+Actors are reference types wrapped in bubbles paper. One can call values within them without worries about thread safety.
+
+> “Only one task at a time can access my mutable state.” 
+
+This is ensured by obliging usage of `await` by every caller of methods or properties when the caller is in a different isolation domain.
+
+#### What is under the hood?
+
+An _executor_. Every actor has a specific executor that takes care of running calls to the actor. Since any calls to an actor can only run on that executor, this one cannot modify a state at the same time and concurrency safety is given.
 
 
+#### What is the difference between an actor and a class?
+
+That actors do not support inheritance. Only with one exception: `NSObject`...to be able to work with Objective-C
+
+### An introduction to Global Actors
+
+A global actor is one that can be tied to a function, a type or a property and makes sure that access to said entity are thread-safe. An example is the `@MainActor`, which means: "make sure this runs on the executor running in the main thread", so mostly UI updates.
+
+It is also possible to create other global actors for global variables that need protection. The `@globalActor` attributed makes that the actor it is applied to is globally accessible, like this:
+
+```
+@globalActor
+actor AccountInfo {
+    static let shared = AccountInfo()
+}
+```
+
+By having the variable `shared` we automatically conform to the protocol `GlobalActor`. 
+
+Once we define it, we can use it for activities that only said actor should handle, like login:
+
+```
+@AccountInfo
+func login() {}
+
+@AccountInfo
+struct AccountManager {}
+```
+
+These actions would all run in the same executor.
+
+#### Why is it good that it is a singleton?
+
+If it is not a singleton, then different instances of the global actor can be created. Each would get a different executor and our goal is that all of our tasks run in the same executor: creating global isolation.
+
+### When and how to use @MainActor
+
+The `@MainActor` is a global actor that runs on the main thread as long as the methods, properties, etc. that it applies to are being called from a asynchronous context.
+
+This means that Swift will not allow such a call:
+
+```
+@MainActor func updateViews() {}
+
+DispatchQueue.global().async {
+    updateViews() // ❌ Compile-time error
+}
+``` 
+
+#### Using the MainActor directly
+
+It is possible to use `MainActor.run {}` instead of `DispatchQueue.main.async {} ` when we need to run any UI updates in the main thread.
+
+Another option is to use the attributed for the complete method. In cases in which there is a network call, this one still happens in the background thread because `URLSession.shared` handles its own queues. In this code:
+
+```
+@MainActor
+func fetchImage(for url: URL) async throws -> UIImage {
+    let (data, _) = try await URLSession.shared.data(from: url)
+    guard let image = UIImage(data: data) else {
+        throw ImageFetchingError.imageDecodingFailed
+    }
+    return image
+}
+```
+the method is first called on the main thread, but then it asks the `URLSession` for data. Once it receives it, the main thread receives it and creates the `UIImage`, which is then returned, this on the main thread already.
+
+#### Using `MainActor.assumeIsolated`
+
+There can be cases in which we are in a synchronous context and need to access the `MainActor` isolated domain. In that case we cannot use `await`, but *if we are very sure we are already in the main thread*, we can call:
+
+```
+MainActor.assumeIsolated { // run code in the main thread accessing MainActor's context }
+```
+
+If we were not in the main thread, the app will crash, as this method checks that the executor is the same one as the `MainActor`'s one.
+
+The safest option is to make sure one is the main thread before calling `assumeIsolated`
+
+```
+ assert(Thread.isMainThread)
+```
+...although we would already have a crash when testing.
+
+### Isolated vs. non-isolated access in actors
+
+Actors are `isolated` by default, just like declarations are `internal` unless marked otherwise.
+
+There are cases in which we want to mark properties as `isolated` or `nonisolated` and we can do so. When interacting with actors from outside of their isolation domain, since we need to use `await`, we can use `isolated` to reduce the number of suspension points (so `await` calls). If we have this:
+
+```
+func payMortgage(_ sum: Double, from bankAccount: BankAccount) {}
+```
+
+where `BankAccount` is an actor, then withdrawing the money and showing the balance afterwards will needs two suspension points:
+
+```
+func payMortgage(_ sum: Double, from bankAccount: BankAccount) async -> Double {
+    await bankAccount.withdrawMoney(sum)
+    let newBalance = await bankAccount.balance
+    return newBalance
+}
+```
+One option to avoid waiting twice is to use `isolated` to mark `bankAccount`, that way the complete method will be executed in the actor's isolation domain:
+
+```
+func payMortgage(_ sum: Double, from bankAccount: isolated BankAccount) async -> Double {
+    await bankAccount.withdrawMoney(sum)
+    let newBalance = await bankAccount.balance
+    return newBalance
+}
+```
+Callers of `payMortgage` outside of the `BankAccount` actor will need to use `await`, of course.
+
+#### isolated closures
+
+We can have closures that get an isolated actor in order to perform actions from outside, like this:
+
+```
+actor BankAccount {
+    func payMonthlyBills(_ perform: @escaping (isolated BankAccount) -> Void)
+}
+```
+that way, the caller can use the `BankAccount` and call all the methods it needs from it without needing to await:
+```
+await bankAccount.payMonthlyBills { account in
+    account.payMortgage()
+    account.payUtilities()
+    account.payTaxes()
+}
+```
+
+#### Adding this extension for all actors
+
+As this is very useful in order to perform several operations on an actor, this can be an extension for all Actors:
+
+```
+extension Actor {
+    @discardableResult
+    func performInIsolation<T: Sendable>(_ closure: @escaping (isolated Self) throws -> T) async rethrows -> T {
+        try closure(self)
+    }
+}
+```
+
+which would allow us to call:
+```
+await bankAccount.performInIsolation { account in ... }
+```
+for all actors.
+
+#### Using the nonisolated keyword in actors
+
+Accessing non mutable data inside actors can be needed and the best option is to mark those properties as `nonisolated`. When it is a `let`-property, the compiler recognizes is as nonisolated already, but if we a computer property such as:
+```
+let firstName
+let lastName: String
+nonisolated var fullName: String { "\(firstName) \(lastName)"}
+``` 
+This is very helpful for cases in which we need to conform to a protocol, one such as `CustomStringConvertible`, which has a `var description: String { get}` property. It would not compile because we could pass actors and classes as `CustomStringConvertible`s and the it'd be impossible to know if the caller is the actor itself, so the compiler throws an error. An easy fix is to mark is as `nonisolated`. 

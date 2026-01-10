@@ -28,4 +28,31 @@ struct SendableChecker: Sendable {
     }
 }
 
+actor ActorBankAccount {
+    let firstName: String = ""
+    let lastName: String = ""
+    nonisolated var fullName: String { "\(firstName) \(lastName)" }
+    func payMortgage() {}
+    func payUtilities() {}
+    func payTaxes() {}
+    func payMonthlyBills(_ perform: @escaping (isolated ActorBankAccount) -> Void) {
+        perform(self)
+    }
+}
 
+class RichPerson {
+    let bankAccount: ActorBankAccount = ActorBankAccount()
+    func payBills() async {
+        print("paying bills for \(bankAccount.fullName)")
+        await bankAccount.payMonthlyBills { account in
+            account.payMortgage()
+            account.payUtilities()
+            account.payTaxes()
+        }
+        await bankAccount.performInIsolation { account in
+            account.payMortgage()
+            account.payUtilities()
+            account.payTaxes()
+        }
+    }
+}
