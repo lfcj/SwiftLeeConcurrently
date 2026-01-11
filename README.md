@@ -1473,4 +1473,46 @@ Task { for await result1 in stream {} }
 ``` 
 In this case, both tasks would be unpredictable values emitted from the stream, no error, but a HUGE ERROR :) 
 
+### Deciding between AsyncSequence, AsyncStream, or regular asynchronous methods
+
+#### When to use an `AsyncSequence`?
+
+As often as one needs to use `Sequence` directly in synchronous contexts: never? The important part about `AsyncSequence` is understanding how it works so we can interact with it. 
+
+It will be used A LOT, but as an end-user, just like normal loops are used in programming, example:
+
+```
+let stream = NotificationCenter.default.notifications(named: .NSSystemTimeZoneDidChange)
+for await notification in stream {
+    // handle time zone change notification
+}
+```
+
+#### When to use `AsyncStream`?
+
+> For bridging delegates, closure callbacks, or emitting events manually, an AsyncStream is often the best choice
+
+Bridging delegates means that we create a bridge class that is the delegate of an entity we want to observe. This bridge class has a stream that is accessible for callers and calls the `continuation.yield` from the delegate methods. Callers that need the information that is delegated need to call the `for await update in bridge.stream` to be kept in the loop of changes.
+
+Another option is for repetitive tasks, such as calling a service every x seconds, using `unfolding`:
+
+```
+struct PingService {
+    
+    func startPinging() -> AsyncStream<Bool> {
+        AsyncStream<Bool> {
+            try? await Task.sleep(for: .seconds(5))
+            return await ping()
+        } onCancel: {
+            print("Cancelled pinging!")
+        }
+    }
+    
+    func ping() async -> Bool { true }
+}
+let pingService = PingService()
+
+for await pingResult in pingService.startPinging() { .. handle ping result .. }
+```
+
 
