@@ -942,7 +942,7 @@ But this would mean that any calls to `increment` in the codebase would need to 
 
 For these scenarios, again, the best route is to create a ticket to migrate. The second best option is to mark the class with `@unchecked Sendable`, make it final and make sure mutable states are as private as possible so changes only happen locally.
 
-## Understanding actors in Swift Concurrency
+## Actors
 
 ### What is an actor?
 
@@ -1321,3 +1321,63 @@ func throwingWithdraw(_ amount: Int) throws {
 There are cases in which you need safe, but **synchronous** access to data and actors are not the solution. There is also legacy code that cannot handle `async`/`await` calls
 
 When actors can be used, they are the best call. When the mutable properties is small, mutex are a good, synchronous option. Its main downside is that it is thread-blocking, so the work done inside of the lock should be as small as possible, or one can easily have a livelock.
+
+## AsyncStream and AsyncSequences
+
+### Working with asynchronous sequences
+
+An async sequence is one where we can await for results to come inside of a loop, like this:
+```
+for await result in array {
+    accumulator.append(result)
+}
+```
+
+`AsyncSequence` itself is just a protocol that defines how to access values. The entities that implement this protocol have an `AsyncIterator` and implement logic to store values.
+
+### Creating a custom AsyncSequence
+
+While `AsyncStream`s are better for usage, implementing a custom `AsyncSequence` is a good step to understand better how it works:
+
+```
+struct Images: AsyncSequence, AsyncIteratorProtocol {
+
+    let urls: [URL]
+    var currentIndex = 0
+
+    mutating func next() async -> Data? {
+        guard !Task.isCancelled else {
+            return nil
+        }
+
+        guard currentIndex <= urls.count else {
+            return nil
+        }
+
+        let currentURL = urls[currentIndex]
+        let imageData = await fetchImage(from: currentURL)
+        currentIndex += 1
+        return imageData
+    }
+
+    func makeAsyncIterator() -> Images {
+        self
+    }
+
+    func fetchImage(from url: URL) async -> Data {
+        try? await Task.sleep(nanoseconds: 100_000)
+        return Data()
+    }
+}
+```
+
+This sequence receives an array or urls, fetches the image for each one asynchronously, and returns them to the caller:
+```
+for await image in Images(urls: []) {}
+```
+
+Regular methods that are available for `Sequence` are also available for `AsyncSequence`, such as a `filter`, `map`, or even `contains`:
+```
+for await image in Images(urls: []).filter { $0.count > 0 } {}
+let containsBigImage = await Images(urls: []).contains { $0.count > 2000000 }
+```
