@@ -54,13 +54,11 @@ public actor NetworkMonitor: NSObject, NetworkMonitoring {
 
 }
 
-public final class NetworkOperatorPerformer {
+public final class NetworkOperatorPerformer: Sendable {
 
     // MARK: - Properties
 
     private let networkMonitor: NetworkMonitoring
-
-    private var timerCancellable: Cancellable?
 
     // MARK: - Init/De-Init
 
@@ -82,7 +80,7 @@ public final class NetworkOperatorPerformer {
                     guard let self = self else {
                         return Result<T, NetworkOperationExecutionError>.failure(.deallocatedSelf)
                     }
-                    for await isNetworkAvailable in await self.networkMonitor.connectionUpdates {
+                    for await isNetworkAvailable in self.networkMonitor.connectionUpdates {
                         if isNetworkAvailable {
                             let result = await closure()
                             return Result<T, NetworkOperationExecutionError>.success(result)
