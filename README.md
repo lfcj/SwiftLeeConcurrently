@@ -1264,3 +1264,60 @@ final class DispatchQueueTaskSerialExecutor: TaskExecutor, SerialExecutor {
 ```
 
 and is to be used in cases in which we are really sure. It is also important we keep a strong reference to it from the actor because the ARC does not count it and we'd want to deinit after out actor stops existing.
+
+### Using a Mutex as an alternative to actors
+
+`async`/`await` are very helpful, but they introduce the need of a context switch. `actor`s are very thread-safe, but they introduce their isolated domains and the need to interact with `Sendable` instances. In cases in which we want to protect a specific case of mutability, a mutex can be the simplest solution.
+
+#### (What is the difference between a Mutex and a Lock?)[https://www.avanderlee.com/concurrency/modern-swift-lock-mutex-the-synchronization-framework/]
+
+All mutexes are locks, but not all locks are mutexes. A mutex is a lock with strict ownership, meaning only one thread or task can lock/unlock it.
+
+Here is an example of a mutex for a bank account:
+
+```
+class MutexBankAccount {
+    private let balance = Mutex<Int>(0)
+
+    var currentBalance: Int {
+        balance.withLock { currentBalance in
+            return currentBalance
+        }
+    }
+
+    func deposit(_ amount: Int) {
+        balance.withLock { currentBalance in
+            currentBalance += amount
+        }
+    }
+
+    func withdraw(_ amount: Int) -> Bool {
+        return balance.withLock { currentBalance in
+            guard currentBalance >= amount else { return false }
+            currentBalance -= amount
+            return true
+        }
+    }
+}
+```
+
+The value to be protected is not separate from the lock, but is defined _within_ the lock. The parameter inside of the `withLock` method is `inout`, what allows us to comfortably modify it safely.
+
+#### Throwing errors
+
+We might want to throw an error instead of returning false when there is not enough money to withdraw and this is easy because `withLock` already `throws`:
+```
+func throwingWithdraw(_ amount: Int) throws {
+    try balance.withLock { currentBalance in
+        guard currentBalance >= amount else { throw Error.reachedZero }
+        currentBalance -= amount
+    }
+}
+```
+`Mutex`s are `Sendable`, so they are a great way to create `Sendable` classes without actors or structs, very helpful to wrap non-Sendable types into classes and make them Sendable.
+
+#### When to use actors and when to use Mutex?
+
+There are cases in which you need safe, but **synchronous** access to data and actors are not the solution. There is also legacy code that cannot handle `async`/`await` calls
+
+When actors can be used, they are the best call. When the mutable properties is small, mutex are a good, synchronous option. Its main downside is that it is thread-blocking, so the work done inside of the lock should be as small as possible, or one can easily have a livelock.

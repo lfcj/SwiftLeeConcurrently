@@ -1,5 +1,6 @@
 extension Collection where Element: Sendable {
     func sequentialMap<Result: Sendable>(
+        isolation: isolated (any Actor)? = #isolation,
         transform: (Element) async -> Result
     ) async -> [Result] {
         var results: [Result] = []
