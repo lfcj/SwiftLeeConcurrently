@@ -1117,3 +1117,112 @@ let lastName: String
 nonisolated var fullName: String { "\(firstName) \(lastName)"}
 ``` 
 This is very helpful for cases in which we need to conform to a protocol, one such as `CustomStringConvertible`, which has a `var description: String { get}` property. It would not compile because we could pass actors and classes as `CustomStringConvertible`s and the it'd be impossible to know if the caller is the actor itself, so the compiler throws an error. An easy fix is to mark is as `nonisolated`. 
+
+### Using Isolated synchronous deinit
+
+It is often that we want to cancel tasks inside of `deinit`, but that causes a compiler error for actors because `deinit` is nonisolated, so calling any `cancel` methods would need to happen with `await`.
+
+This is, of course, not possible because deinit can not be asynchronous. That would a mess for the ARC system, no knowing when an object can really be released. 
+
+A solution is adding `isolated` to deinit:
+
+```
+isolated deinit {
+    cancel()
+}
+```
+
+This is only available for 18.4+.
+
+### Adding isolated conformance to protocols
+
+If we have a bank account such as this one:
+
+```
+@MainActor
+final class BankAccount {
+    let holder: String
+    var balance: Double
+    init(holder: String, balance: Double) {
+        self.holder = holder
+        self.balance = balance
+    }
+} 
+```
+
+and want to make it `Equatable` later, the comparison that uses `lhs.balance == rhs.balance` can cause a data race because we do not know which actor is executing this code. We cannot be sure it is the `MainActor`. Thankfully, if we turn "InferIsolatedConformances" on under Build Settings, we can tell the compiler that `BankAccount` only conforms to `Equatable` when the main actor is working on it:
+
+```
+extension BankAccount: @MainActor Equatable {}
+``` 
+
+### Understanding actor reentrancy
+
+Actor reentrancy is whenever the actor does work, suspends it to let another actor, with a different priority (possibly) do work, and then returns to finish the work it had started. The state of the actor can have changed during that "break" and can cause unexpected behaviour. Actor reentrancy can cause race conditions and is the nature of concurrency's difficulties. 
+
+If we'd have a method to count the number of cars that pass by a small town:
+
+```
+func controlTraffic() {
+    cars += 1
+    await police.notify(cars)
+    announce("\(cars) have passed as of now.")
+}
+``` 
+Then we could unexpected announcements because, take 5 cars pass, if the `police.notify` method takes a bit more, the actor waits for the `police` method to finish, but, in parallel, its executor can count more cars and change the actor's `cars` number, such that when all `controlTraffic` methods finally resume and call `announce`, the number of `cars` can be the same for all.
+
+One could end up with:
+```
+x have passed as of now
+x have passed as of now
+x have passed as of now
+```
+instead of 
+```
+x-2 have passed as of now
+x-1 have passed as of now
+x have passed as of now
+```
+
+The solution in concurrency is to make sure that actors end up all of their important work before suspension
+
+### Inheritance of actor isolation using the #isolation macro
+
+Sometimes it can be useful to inherit the isolation domain of the caller and `#isolation` is helpful there, as it allows entering the actor's properties and methods without suspension and even safely pass non-sendable values. This macro offers that option to `async` methods.
+
+The example begins with a sequential map extension that transform all values in an array, allowing the transformation to happen asynchronously: 
+```
+extension Collection where Element: Sendable {
+    func sequentialMap<Result: Sendable>(
+        transform: (Element) async -> Result
+    ) async -> [Result] {
+        var results: [Result] = []
+        for element in self {
+            results.append(await transform(element))
+        }
+        return results
+    }
+}
+```
+Would we call this method inside of a @MainActor context, like this:
+```
+Task { @MainActor in
+    let names = ["Antoine", "Maaike", "Sep", "Jip"]
+    let lowercaseNames = await names.sequentialMap { name in
+        await lowercaseWithSleep(input: name)
+    }
+    print(lowercaseNames)
+}
+```
+then the compiler would complain because `sequentialMap` would leave the `MainActor`'s context and enter `lowercaseWithSleep`'s one. This could cause data races. The solution is to make sure that `lowercaseWithSleep` is executed by the calling actor's executor. This is done passing the isolation domain:
+
+```
+func sequentialMap<Result: Sendable>(
+    isolation: isolated (any Actor)? = #isolation,
+    transform: (Element) async -> Result
+) async -> [Result] {
+```
+
+This is very powerful to write **generic extensions**, so the extension can be easily called without `await` / context switches.
+
+
