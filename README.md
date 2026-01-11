@@ -1381,3 +1381,96 @@ Regular methods that are available for `Sequence` are also available for `AsyncS
 for await image in Images(urls: []).filter { $0.count > 0 } {}
 let containsBigImage = await Images(urls: []).contains { $0.count > 2000000 }
 ```
+
+### Using AsyncStream and AsyncThrowingStream in your code
+
+An `AsyncThrowingStream` is a stream of values that can throw an error. The stream can be closed with a `finish` event.
+
+Its best use is whenever a completion closure can keep delivering values, so the caller `await`s on it.
+
+In a case where a download method gives us progress information as well as a final piece of downloaded data, the completion method could look like this:
+
+```
+func download(_ url: URL, progressHandler: @escaping (Float) -> Void, completion: @escaping (Result<Data, Error>) -> Void) throws {
+        // .. Download implementation
+    }
+```
+
+In this case the `progressHandler` could only be called once. If we implement the logic with an `AsyncStream`, the download logic could report progress in a more granular way:
+
+```
+func download(_ url: URL) throws -> AsyncThrowingStream<Status, Error> {
+    AsyncThrowingStream { continuation in
+        do {
+            try download(
+                url,
+                progressHandler: { progress in
+                    continuation.yield(.downloading(progress))
+                },
+                completion: { result in
+                    continuation.yield(with: result.map { .finished($0)} )
+                    continuation.finish()
+                }
+            )
+        } catch {
+            continuation.finish(throwing: error)
+        }
+    }
+}
+```
+
+In order to call this method, we can do so:
+
+```
+for try await status in fileDownloader.download(URL(string: "www.google.com")!) {
+    switch status {
+    case .downloading(let progress):
+        print("Download is at \(progress)")
+    case .finished(let data):
+        print("All is good and we have \(data.count) bytes")
+    }
+}
+```
+
+#### Debugging an AsyncStream
+
+Besides regular print statements, we can add a closure that is called when the `AsyncStream` is terminated:
+
+```
+continuation.onTermination = { @Sendable terminationReason in
+    print("Stream termination reason: \(terminationReason)")
+}
+```
+
+The value for `terminationReason` can be `finished`, `cancelled`, etc. This method is not only for debugging, of course, but also useful for cleanup work after the `AsyncStream` is closed.
+
+#### Cancellation
+
+`AsyncStream`s can get cancelled when an enclosing task is cancelled due to context inheritance.
+
+There is **no way to cancel an `AsyncStream` directly**.
+
+#### Configuring a buffer policy
+
+The default `bufferingPolicy` of a stream is `.unbounded`, meaning it keeps all the values that it emits until they are read.
+
+This is helpful to make sure one does not miss values, but not always needed. When wanting to receive the latest update on something (authentication status, network availability, etc.), then older values are not important.
+
+Would we want to only keep 1 or x number of the latest values, we can use `.bufferingNewest(x)` as the buffering policy.
+
+And, would we want the exact opposite: keeping 1 or x number of the **first** values, we can use `.bufferingOldest(x)`.
+
+A final option is a buffering policy that keeps nothing and only emits the latest values. None read values are lost. This one is `.bufferingNewest(0)`.
+
+### AsyncStream vs Publisher
+
+There are enough situations in which replacing a `Publisher` with a `AsyncStream` is possible and there is one major difference: !! `AsyncStream` is designed to have one consume only and `Publisher` can have as many as it needs -> This is very important to keep in mind, because one can technically still do:
+
+```
+let stream = AsyncStream { ... }
+Task { for await result in stream {} }
+Task { for await result1 in stream {} }
+``` 
+In this case, both tasks would be unpredictable values emitted from the stream, no error, but a HUGE ERROR :) 
+
+
