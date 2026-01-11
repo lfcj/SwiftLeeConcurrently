@@ -1225,4 +1225,42 @@ func sequentialMap<Result: Sendable>(
 
 This is very powerful to write **generic extensions**, so the extension can be easily called without `await` / context switches.
 
+### Using a custom actor executor
 
+> By default, actors run their tasks on a shared global thread pool. This pool doesn’t stick to a specific thread or queue, so an actor’s tasks can hop between different threads as they run.
+
+There are situations in which we want to make sure our tasks run in a background queue (blocking, heavy, slow ones) and prefer to create an executor for those cases.
+
+When having an executor, we can use methods such as `Task(executorPreference:)` or `group.addTask(executorPreference:)` to set a preferred executor. Emphasis on "preferred", as the system will pick another executor if needed.
+
+A custom executor that is a `TaskExecutor` and a `SerialExecutor` would look like this:
+
+```
+final class DispatchQueueTaskSerialExecutor: TaskExecutor, SerialExecutor {
+    private let dispatchQueue: DispatchQueue
+    
+    init(dispatchQueue: DispatchQueue) {
+        self.dispatchQueue = dispatchQueue
+    }
+    
+    func enqueue(_ job: consuming ExecutorJob) {
+        let unownedJob = UnownedJob(job)
+        dispatchQueue.async {
+            unownedJob.runSynchronously(
+                isolatedTo: self.asUnownedSerialExecutor(),
+                taskExecutor: self.asUnownedTaskExecutor()
+            )
+        }
+    }
+    
+    func asUnownedSerialExecutor() -> UnownedSerialExecutor {
+        UnownedSerialExecutor(ordinary: self)
+    }
+
+    func asUnownedTaskExecutor() -> UnownedTaskExecutor {
+        UnownedTaskExecutor(ordinary: self)
+    }
+}
+```
+
+and is to be used in cases in which we are really sure. It is also important we keep a strong reference to it from the actor because the ARC does not count it and we'd want to deinit after out actor stops existing.
