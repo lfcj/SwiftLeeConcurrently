@@ -1557,4 +1557,47 @@ Threads in GCD allowed setting a QoS (quality-of-service) for a thread. Swift Co
 
 If we steer away from threads and think tasks that can be executed on any thread that is available, it is clear that _any thread_ will have access to modify data. This is a big danger for thread-safety and it becomes very obvious why a task's isolation domain is necessary. If no two threads can modify an isolation domain at the same time, then it does not matter on which thread a task runs as long as it has its domain.
 
-### Understanding Task suspension points
+### Understanding Task suspension points 
+
+A suspension point is when a task stops executing to allow other task to run.
+
+It usually happens after `await`, but **not always**. If the task that is _awaited_ can run synchronously, it can happen that no suspension happens. Swift Concurrency takes care of that decision.
+
+### Actor re-entrancy
+
+It is very important to think that an isolation domain is like an island and tasks are sets of work that happen on that island. Even if the resources of the island are safe to only be used individually, if this happens:
+
+```
+func buildHouse() {
+    try chooseLocationWithWoodNearby()
+    await chopWoodForHouse()
+    buildHouse()
+}
+
+Task { buildHouse } // task for Jane's house
+Task { buildHouse } // task for Bob's house
+```
+
+In this case, if the location chosen is the same one, whichever task returns faster from `chopWoodForHouse` might have chopped all wood. The next `chopWoodForHouse` will not have the same resources. This is called a race condition and can deliver unexpected results. In this case, no wood -> no house.
+
+#### Will a task always run on a background thread?
+
+We cannot know. The only time we know where a task is running is when the actor is the `MainActor`. Its tasks are executed by the main thread.
+
+Up until Swift 6.2 or when `NonisolatedNonsendingByDefault` is set to FALSE, calling an asynchronous method with `await` from within a task run by the `MainActor` would have made that said task runs in a background thread.
+
+When `NonisolatedNonsendingByDefault` is set to TRUE, **if the async method is nonisolated**, then it is run on the `MainActor` as well to avoid the context switch.
+
+If that behavior becomes default and there is a case when we do not want it, then we can use the `@concurrent` attribute to oblige the context switch.  
+
+### Dispatching to different threads using nonisolated(nonsending) and @concurrent (Updated for Swift 6.2)
+
+## Memory Management
+
+## Core Data
+
+## Performance
+
+## Testing Concurrent Code
+
+## Migrating existing code to Swift Concurrency & Swift 6
