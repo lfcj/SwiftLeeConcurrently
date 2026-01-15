@@ -1515,4 +1515,46 @@ let pingService = PingService()
 for await pingResult in pingService.startPinging() { .. handle ping result .. }
 ```
 
+## Threading
 
+### How Threads related to Tasks
+
+A thread is a system resource to run a set of instructions. A task is a unit of asynchronous work that is run by Swift' cooperative pool.
+
+Said pool takes care of optimizing resources so we developers do not have to do that on the lower level. That means that tasks can run on any thread that the pool spawns, but we do not see it. And the pool does not create a thread per task, but schedules the tasks on the minimum amount of threads or however it sees efficiently, with no more threads than CPU cores.
+
+It is important to note that one task can start on one thread and finish on another one. In this code:
+
+```
+func task1() async throws {
+    print("Task 1 started on thread: \(Thread.current)") // thread xxxxY
+    try await Task.sleep(for: .seconds(2))
+    print("Task 1 resumed on thread: \(Thread.current)") // thread xxxxY or xxxx2 or any other
+}
+```
+
+the thread used after the suspension can be the first one or any other one.
+
+A **big advantage** of Swift Concurrency vs Grand Dispatch Central is that it avoids threads explosion and is generally more efficient.
+
+### Getting rid of the "Threading Mindset"
+
+The most important swift is going from:
+
+> In which Thread should this run? 
+
+to
+
+> Which actor should execute/own this?
+
+This makes that our worry is no longer execution efficiency, but efficiently picking isolation domains to make sure there are not a lot of suspension points (actors interact with each other using suspension) while keeping mutual exclusion.
+
+#### Hints, not (necessarily) priorities.
+
+Threads in GCD allowed setting a QoS (quality-of-service) for a thread. Swift Concurrency allows "priorities" such as `userInitiated` that tell the execution pool that a task is important for the user. Setting this does not mean it will run right away, in the Pool We Trust for it to run asap :) 
+
+#### Why Sendable makes so much sense
+
+If we steer away from threads and think tasks that can be executed on any thread that is available, it is clear that _any thread_ will have access to modify data. This is a big danger for thread-safety and it becomes very obvious why a task's isolation domain is necessary. If no two threads can modify an isolation domain at the same time, then it does not matter on which thread a task runs as long as it has its domain.
+
+### Understanding Task suspension points
