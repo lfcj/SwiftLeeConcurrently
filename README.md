@@ -1598,6 +1598,135 @@ If that behavior becomes default and there is a case when we do not want it, the
 
 ## Performance
 
+### Using Xcode Instruments to find performance bottlenecks
+
+Performance usually suffers due to 
+- UI hangs
+- Poor parallelization 
+- Unnecessary suspensions.
+
+Using Swift Concurrency from Xcode Instruments is helpful to see how many Tasks are running, how many Actors and what is the Main Thread dealing with.
+
+It is good to name tasks like this:
+
+```
+Task(name: "Some name \(index)") {
+``` 
+
+when creating them from within a for-loop in order to see where they are being executed in Instruments.
+
+This task shows an (example)[https://github.com/AvdLee/Swift-Concurrency-Course/tree/main/Sample%20Code/Module%2010%20-%20Performance] of a for-loop running from within a Task that inherits the isolation context from the @MainActor:
+
+```
+@MainActor
+class Generator {
+    var wallpapers = [Wallpaper]()
+    func generate() {
+        Task {
+            for i in 0..<number {
+                let wallpaper = generateRandomWallpaper()
+                wallpapers.append(wallpaper)
+            }
+        }
+    }
+
+}
+```
+
+The solution starts by creating an actor for the `generateRandomWallpaper` method and calling it with `await`. This does not introduce parallelization because the same actor is being used for every generation. It moves work away from the Main Thread, so it is a first step.
+
+The next approach is using a TaskGroup. We can, however, see that generation happens one-by-one. This is because the actor is being used and it acts "alone" to protect is isolation domain. It is protecting nothing because there is no mutable state.
+
+-> There is no need for an actor.
+
+The next step is making sure that `generateRandomWallpaper` is `@concurrent` in order to send the work to background threads. The TaskGroup is also not needed because we would not need to cancel all tasks at the same time, nor do we need the results at once. Since we are fine receiving results whenever they are ready, the final optimal solution is:
+
+```
+@MainActor
+class Generator {
+    var wallpapers = [Wallpaper]()
+    func generate() {
+        for i in 0..<number {
+            Task {
+                let wallpaper = await WallpaperFactory.generateRandomWallpaper()
+                wallpapers.append(wallpaper)
+            }
+        }
+    }
+}
+struct WallpaperFactory {
+    @concurrent static func generateRandomWallpaper() -> Wallpaper {}
+}
+```
+
+Accesses to `wallpapers` are protected by the `@MainActor`, parallelization is guaranteed as one task is created to generate each wallpaper and the work within it is executed concurrently.
+
+### Reducing suspension points by managing isolation effectively
+
+The main goal is to have the least amount of code between suspension points to avoid non-deterministic scenarios.
+
+When seeing `await` as crossing a border between isolation points, the goal is to:
+
+> 1. Do as much work as possible before a border crossing
+> 2. Cross it once
+> 3. Finish the job
+> 4. Only cross again when necessary
+
+The best way to avoid suspension points is to not use them. That means: use synchronous methods instead of non-needed async ones.
+
+#### Using nonisolated(nonsending) and @concurrent
+
+When synchronous methods are not possible, using `nonisolated(nonsending)` or `@concurrent` are helpful to control suspension points.
+
+The first one allows calling the method from the isolation domain of the caller, so there is no context switch / suspension point needed. In this code:
+
+```
+@MainActor
+func updateUI() {
+    Task {
+        print("Starting on the main thread: \(Thread.current)")
+        await someBackgroundTask()
+    }
+}
+nonisolated(nonsending) private func someBackgroundTask() async {
+    print("Background task started on thread: \(Thread.current)")
+}
+```
+the output will always be:
+
+```
+Starting on the main thread: <_NSMainThread: 0x600001708080>{number = 1, name = main}
+Background task started on thread: <_NSMainThread: 0x600001708080>{number = 1, name = main}
+```
+
+`@concurrent`, on the other side, allows us to explicitly do the context switch whenever we deem it necessary.
+
+#### Inheritance of actor isolation using the #isolation macro
+
+When dealing with actors and wanting to inherit the isolation domain of the caller, the go-to action is using `#isolation`.
+
+#### Prefer non-suspending variant when available
+
+Instead of calling `try await Task.checkCancellation()`, one can call 
+```
+guard !Task.isCancelled else { return }
+```
+
+#### Use Task groups or async let
+
+These tools allow for parallel execution instead of waiting for work to be executed to continue
+
+#### Checklist
+
+> Whenever you write await, ask yourself:
+
+> - Can this be synchronous?
+> - Can I move this await to a higher-level function? (image processing example)
+> - Am I accidentally hopping between isolation domains?
+> - Would nonisolated(nonsending) remove the suspension?
+> - Is there a non-suspending API available?
+> - Should this be merged with another await using async let or task groups?
+ 
 ## Testing Concurrent Code
 
 ## Migrating existing code to Swift Concurrency & Swift 6
