@@ -1584,17 +1584,35 @@ In this case, if the location chosen is the same one, whichever task returns fas
 
 We cannot know. The only time we know where a task is running is when the actor is the `MainActor`. Its tasks are executed by the main thread.
 
+### Dispatching to different threads using nonisolated(nonsending) and @concurrent (Updated for Swift 6.2)
+
 Up until Swift 6.2 or when `NonisolatedNonsendingByDefault` is set to FALSE, calling an asynchronous method with `await` from within a task run by the `MainActor` would have made that said task runs in a background thread.
 
 When `NonisolatedNonsendingByDefault` is set to TRUE, **if the async method is nonisolated**, then it is run on the `MainActor` as well to avoid the context switch.
 
 If that behavior becomes default and there is a case when we do not want it, then we can use the `@concurrent` attribute to oblige the context switch.  
 
-### Dispatching to different threads using nonisolated(nonsending) and @concurrent (Updated for Swift 6.2)
+### Controlling the default isolation domain (Updated for Swift 6.2)
+
+The default isolation domain is `MainActor` for new projects. One can change this to `nonisolated` by disabling the `Default Actor isolation` under Build Settings.
 
 ## Memory Management
 
-## Core Data
+### Overview of memory management in Swift Concurrency
+
+Swift Concurrency deals with thread-safety dangers, but memory leaks, retain cycles and unexpected object lifetimes are still very much present.
+
+When one sets an object to `nil`, if a `Task` that it started has a strong reference to it, it will continue running until `deinit` is called, so a retain cycle happens.
+
+Even if one holds a `[weak self]` reference, if any method is called and it had a task, that task will finish, even when its result is not needed.
+
+It is imperative one pays attention to memory consumption in Swift Concurrency apps.
+
+### Preventing retain cycles when using Tasks
+
+The idea scenario is to avoid strong references, especially to `self`, as much as possible. Nevertheless, tasks can still continue running after an object is set to `nil`.
+
+The best approach is to keep tabs on tasks and make sure we cancel them **actively** before an object is set to `nil`.
 
 ## Performance
 
@@ -1726,7 +1744,86 @@ These tools allow for parallel execution instead of waiting for work to be execu
 > - Would nonisolated(nonsending) remove the suspension?
 > - Is there a non-suspending API available?
 > - Should this be merged with another await using async let or task groups?
+
+### Using Xcode Instruments to detect and remove suspension points
+
+Using the checklist above is a great start, but it is always good to double check how Tasks are behaving.
+
+Xcode Instruments allow us opening the Swift Concurrency instrument and checking the states of tasks. They are:
+
+> Creating -> Running -> Suspended -> Ending
+
+It is advised to stop on tasks that do the same and zoom into their "Suspended" states. What the longest they are suspended? That is how faster our app can be.
+
+We can make it faster by removing suspension points, when possible.
+
+In the example of the Wallpaper task, the second suspension is very long after a while. These are the suspensions.
+
+```
+@MainActor
+class Generator {
+    var wallpapers = [Wallpaper]()
+    func generate() {
+        for i in 0..<number {
+            Task {
+                // First suspension to enter `WallpaperFactory` isolation context and create wallpaper.
+                let wallpaper = await WallpaperFactory.generateRandomWallpaper()
+                // Second suspension to re-enter MainActor and add the wallpaper to the array
+                wallpapers.append(wallpaper)
+            }
+        }
+    }
+}
+```
+
+In this case the `WallpaperFactory` does not protect any mutable state, so it can actually live within the same one as `Generator` and be executed concurrently:
+```
+@MainActor
+class Generator {
+    var wallpapers = [Wallpaper]()
+    func generate() {
+        for i in 0..<number { @concurrent in
+            Task {
+                // Notice this is now synchronous, no await.
+                let wallpaper = WallpaperFactory.generateRandomWallpaper()
  
+                // Only one suspension point to return to `MainActor`:
+                await MainActor.run {
+                    wallpapers.append(wallpaper)
+                }
+            }
+        }
+    }
+}
+```
+
+Now there is only one suspension point. Further improvements would be to only load the amount of wallpapers that fit the screen, and not `number`, or even loading them into an array at once, since creating them does not need long.
+
+### How to choose between serialized, asynchronous, and parallel execution
+
+The goal is to always think in this order: `Sync -> Async -> Parallel` and only move towards the right when really needed.
+
+Candidates for async or further classification are non-UI work, storage access, large data sets or network calls.
+
+Today's devices are incredibly fast, so synchronous calls can be faster than async ones + context switches. A common example is reading JSONs from disk. Small ones and cached in the system, so it is faster to read them synchronously than switching to a background isolation domain.
+
+It is advised to run apps for a long time in the background simulating user usage and monitoring them via Instruments. That allows catching performance glitches and starting optimization.
+
+Overall, never forget Donald Knuth:
+
+> Early Optimization is the Mother of all Evil
+
+A final checklist to move along this funnel is:
+
+> - Will this block the main actor long enough to be visible?
+> - Will the work scale with user data (N items → N cost)?
+> - Does the work involve I/O?
+> - Does the work benefit from combining multiple independent operations?
+> - Is this logic called frequently?
+> - Is parallelism here causing memory pressure and CPU scheduling overhead mostly, or adding real value?
+> - If you check 2 or more boxes, async or parallel is usually justified. However, once again, use Instruments when in doubt!
+
+
 ## Testing Concurrent Code
 
 ## Migrating existing code to Swift Concurrency & Swift 6
