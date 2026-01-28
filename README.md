@@ -1823,7 +1823,229 @@ A final checklist to move along this funnel is:
 > - Is parallelism here causing memory pressure and CPU scheduling overhead mostly, or adding real value?
 > - If you check 2 or more boxes, async or parallel is usually justified. However, once again, use Instruments when in doubt!
 
-
 ## Testing Concurrent Code
 
+### (Testing concurrent code using XCTest)[https://github.com/AvdLee/Swift-Concurrency-Course/tree/main/Sample%20Code/Module%2011%20-%20Testing%20Concurrent%20Code]
+
+Tests that test methods that run in the `MainActor` have to be marked so as well. The ideal scenario would be to change the tested method so it runs on a different actor (if possible), but it is not always possible, so marking the test method itself with `@MainActor` fixes the error. It makes that the tests run in the main thread, so should be used with caution.
+
+#### Dealing with `.sleep(` in tests.
+
+In a method that starts a Task and does not wait for its result, then the best option is observing changes for `@Published` variables or `@ObservableObject`s using `withObservationTracking`. This method observes changes in an object or a variable and fulfills an expectation that is awaited. It looks like this:
+
+```
+let observableObject = MyObservableObject()
+let expectation = self.expectation(description: "Changes")
+
+_ = withObservationTracking {
+    observableObject.results
+} onChange: {
+    expectation.fulfill()
+}
+
+observableObject.performTask()
+
+/// Asynchronously await for the expectation to fulfill.
+await fulfillment(of: [expectation], timeout: 10.0)
+
+/// Assert the result.
+XCTAssertEqual(observableObject.results, "expected results", "Should have results 'bla' 'bla'")
+```
+
+#### Expectations using Swift Testing.
+
+Since Swift Testing does not support expectations, a roundabout needs to be found, either with a `withCheckedContinuation`...:
+
+```
+let observableObject = MyObservableObject()
+    
+await withCheckedContinuation { continuation in
+    _ = withObservationTracking {
+        observableObject.results
+    } onChange: {
+        continuation.resume()
+    }
+    
+    observableObject.performTask()
+}
+
+#expect(observableObject.results == "expected results")
+```
+...or with a `confirmation` if we can `await` for the method that causes the change (`performTask`) and want to make sure we test the tracking works:
+```
+let observableObject = MyObservableObject()
+    
+/// Create and await for the confirmation.
+await confirmation { confirmation in
+    /// Start observation tracking.
+    _ = withObservationTracking {
+        observableObject.results
+    } onChange: {
+        /// Call the confirmation when results change.
+        confirmation()
+    }
+    
+    /// Start and await searching.
+    /// Note: using `await` here is crucial to make confirmation work.
+    /// the confirmation method would otherwise return directly.
+    await observableObject.performTask()
+}
+
+#expect(observableObject.results == "expected results")
+```
+
+#### Using `setUp` and `tearDown` in Swift Testing
+
+`setUp` and `tearDown` do not exist in Swift Testing structs. Instead we have `init() async throws` and `deinit`.
+
+The `deinit` only allows for synchronous code, so in order to call async clean-up code, we need a new way of thinking of tests:
+
+##### Using Test Scoping Traits for asynchronous clean ups
+
+In order to have code that runs before and after tests, we can introduce "test traits" that will provide specific test scope. Instead of writing tests directly inside of a testing class, we create an environment for it.
+
+```
+@MainActor
+final class MyClassTesting {
+
+    @MainActor
+    struct Environment {
+        @TaskLocal static var observableObject = MyObservableObject()
+    }
+}
+```
+Then we define the trait itself to be able to run tests:
+```
+struct MyObjectTestingTrait: SuiteTrait, TestTrait, TestScoping {
+    @MainActor
+    func provideScope(for test: Test, testCase: Test.Case?, performing function: () async throws -> Void) async throws {
+        print("Running for test \(test.name)")
+
+        let observableObject = MyObservableObject()
+        try await MyObjectTestingTrait.Environment.$observableObject
+            .withValue(observableObject) { // It binds the task-local to the specific value for the duration of the synchronous operation
+            await observableObject.setUp()
+            try await function() // Original test
+            await articleSearcher.tearDown()
+        }
+    }
+}
+```
+
+Now we can call a test using this scope in this way:
+
+```
+@Test(MyObjectTestingTrait())
+func testEmptyQuery() async {
+    await Environment.observableObject.performSearchTask("")
+    #expect(Environment.observableObject.results == "Expected results when search is empty query")
+}
+```
+
+Another option is using the suite:
+
+```
+@Suite(MyObjectTestingTrait())
+@MainActor
+final class MyClassTesting {
+    // ...
+}
+```
+
+Traits are the solution to use `setUp` and `tearDown` inside of Swift Testing. If using `@Suite` or `@Test(...Trait())` depends on the needs of the test.
+
+#### [Using Swift Concurrency Extras by Point-Free](https://github.com/pointfreeco/swift-concurrency-extras)
+
+This framework is a great asset to avoid flaky tests. One common example is testing for `isLoading` states in methods such as:
+
+```
+var fetchFunStuff = (URL) async throws -> Data // we can have different ways to inject this logic for testing purposes
+func load() async -> FunStuff {
+    isLoading = true // (4)
+    defer { isLoading = false } // (4)
+    let funStuff = await fetchFunStuff() // (5)
+    return funStuff
+}
+```
+
+If one tests for it like this:
+
+```
+func testIsLoading() {
+    Task { someObject.load() }
+    XCTAssertTrue(someObject.isLoading)
+}
+```
+It will mostly fail because the `load` method will not have started, or it will have finished. We cannot know.
+
+The solution is in the framework above, more precisely in their method `withMainSerialExecutor`, which "attempts to run all tasks spawned in an operation serially and deterministically".
+
+Testing a case such as `isLoading` with the main serial executor would then look like this:
+
+```
+func testIsLoading() {
+    try await withMainSerialExecutor {
+        someObject.fetchFunStuff = { // (1)
+            // Let the #expect(isLoading) happen 
+            Task.yield() // (5)
+            return Data() // (7)
+        }
+        let task = Task { someObject.load() } // (2)
+        
+        // Suspend the current execution and let the Task above start executing `load`, which sets `isLoading` to `true`
+        Task.yield()  // (3)
+
+        XCTAssertFalse(someObject.isLoading) // (6)
+
+        await task.value // (7)
+
+        XCTAssertFalse(someObject.isLoading) // 8
+    }
+}
+```
+
+Thanks to the main serial executor running this code, we can know **exactly** in which order it will be executed. Like this:
+
+1. Assign value to `fetchFunStuff`
+2. Create `Task` that will execute the `load()` method
+3. Yield execution time to waiting task, the `load` one
+4. First lines inside of `load` are executed, one of them is `isLoading = true`
+5. `fetchFunStuff` is called and then the `Task.yield()` inside of it, which lets the waiting task, the `testIsLoading` one, continue running.
+6. `#expect(someObject.isLoading)` is called.
+7. The task that continues running `load()` is resumed, returns the `Data()` and calls `defer`
+8. Since `defer` was called, `isLoading` is now false and it can be asserted.
+
+#### Why is the main serial executor needed?
+
+Because of the definition of `yield`:
+
+> If this task is the highest-priority task in the system, the executor immediately resumes execution of the same task. As such, this method isn’t necessarily a way to avoid resource starvation.
+
+Meaning that, in a context where the main serial executor can be busy (when a lot of tests are running), the yield might turn back and forth. When we set the executor, we know it will forcibly switch.
+
+A trick to run everything inside of the main serial executor under `XCTest` is using
+
+```
+override func invokeTest() {
+    withMainSerialExecutor {
+        super.invokeTest()
+    }
+}
+```
+
+#### [Using a main serial executor using Swift Testing](https://github.com/pointfreeco/swift-concurrency-extras/pull/56)
+
+The parallel execution of SwiftTesting does not play well with the serial executor only, so just using a trait does not work.
+
+The solution is using `serialized` for the whole suite:
+
+```
+@Suite(.serialized)
+@MainActor
+final class MyClassTesting {
+    // ...
+}
+```
+
+ 
 ## Migrating existing code to Swift Concurrency & Swift 6
