@@ -1,6 +1,6 @@
 # Swiftlee Concurrency - Swift 6
 
-These are the notes for (AvdLee's Swift Concurrency Code)[https://github.com/AvdLee/Swift-Concurrency-Course/tree/main]
+These are the notes for [AvdLee's Swift Concurrency Code](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main)
 
 What started in Swift 5 as implementing the ideas behind Lattner's Manifesto, has now continued with Swift 6.
 
@@ -112,8 +112,7 @@ func performPOSTURLRequest(completion: @escaping (Result<PostData, NetworkingErr
 to one like this one:
 
 ```
-func performPOSTURLRequest() async throws(NetworkingError) -> PostData {
-}
+func performPOSTURLRequest() async throws(NetworkingError) -> PostData {}
 ```
 
 - By defining `throws(NetworkingError)`, the set of thrown errors is easier to follow.
@@ -511,7 +510,7 @@ Both `.sleep` and `.yield` can be used to _stop_ a task for a certain period of 
 try await Task.sleep(for: .milliseconds(500))
 ```
 
-This (code)[https://github.com/AvdLee/Swift-Concurrency-Course/blob/main/Sample%20Code/Module%203%20-%20Tasks/ConcurrencyTasks/ConcurrencyTasks/Views/Task%20Sleep%20Example/ArticleSearcher.swift] shows how to use manual or automatically cancelled tasks that sleep for 500 ms before performing a search in order to allow the user type.
+This [code](https://github.com/AvdLee/Swift-Concurrency-Course/blob/main/Sample%20Code/Module%203%20-%20Tasks/ConcurrencyTasks/ConcurrencyTasks/Views/Task%20Sleep%20Example/ArticleSearcher.swift) shows how to use manual or automatically cancelled tasks that sleep for 500 ms before performing a search in order to allow the user type.
 
 **.yield suspends the current task and allows others to execute**. It might suspend the task for a long time in order to execute higher priority tasks, or it might not even suspend it at all if the calling task is the one with the highest priority at the moment. 
 
@@ -547,7 +546,7 @@ Task groups can be used creatively to create timeouts. By letting one of the tas
 
 I used the example given by AdLee in the link above in order to run an operation **only** if the network is available. If the network does not become available during the timeout, then the operation is not executed.
 
-Check out the (`NetworkOperationPerformer`)[https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrently/NetworkOperatorPerformer.swift] to see the details. The tests are also given [here](https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrentlyTests/NetworkPerformerTests.swift).
+Check out the [`NetworkOperationPerformer`](https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrently/NetworkOperatorPerformer.swift) to see the details. The tests are also given [here](https://github.com/lfcj/SwiftLeeConcurrently/blob/main/SwiftLeeConcurrentlyTests/NetworkPerformerTests.swift).
 
 ## Sendable
 
@@ -657,7 +656,7 @@ for _ in 1...10 {
 print("Final counter value: \(await counter.getValue())")
 ```
 
-### (Conforming to Sendable)[https://avanderlee.com/courses/wp/swift-concurrency/conforming-your-code-to-the-sendable-protocol/]
+### [Conforming to Sendable](https://avanderlee.com/courses/wp/swift-concurrency/conforming-your-code-to-the-sendable-protocol/)
 
 In a few words, `Sendable` is a protocol that tells the compiler that an object can be passed between isolation domains without worrying about mutual exclusion or data races.
 
@@ -673,7 +672,7 @@ In cases in which we want to add conformance to `Sendable` from another module, 
 If we are sure ourselves, we can use `@unchecked Sendable` and make sure all variables are safe.
 
 
-### (Sendable and Value Types)[https://avanderlee.com/courses/wp/swift-concurrency/sendable-and-value-types/]
+### [Sendable and Value Types](https://avanderlee.com/courses/wp/swift-concurrency/sendable-and-value-types/)
 
 Value types are copied-by-value types, which makes them `Sendable` already because they are not mutable. This includes `structs`, `enum`s, `tuple`s and basic data types like `Int`, `String`, `Double` and `Bool`. They are implicitly `Sendable`.
 
@@ -693,7 +692,7 @@ An enum or struct can be part of frameworks or packages and accessed when they a
 
 One way to implicitly mark a value type as `Sendable` is by tying it to an actor. The most common way is using `@MainActor` as this would make sure that only that actor can access variables within the object and thread-safety would be given.
 
- ### (Sendable and Reference Types)[https://avanderlee.com/courses/wp/swift-concurrency/sendable-and-reference-types/]
+ ### [Sendable and Reference Types](https://avanderlee.com/courses/wp/swift-concurrency/sendable-and-reference-types/)
 
 A reference type is never implicitly `Sendable` per se, only when using actors. Reference types are shared by sharing a reference, so changes to the objects change the object that all components have access to. Besides classes, these are other reference types in Swift:
 
@@ -720,7 +719,7 @@ Dealing with `Sendable` reference types is added effort, so before creating one,
 
 **Why can't a non-final class be `Sendable`?'** Because its children could compromise thread-safety
 
-### (Sendable and closures)[https://avanderlee.com/courses/wp/swift-concurrency/using-sendable-with-closures/]
+### [Sendable and closures](https://avanderlee.com/courses/wp/swift-concurrency/using-sendable-with-closures/)
 
 Closures are reference types that cannot conform to protocols at the moment, but are also very valuable types in programming with Swift.
 
@@ -772,7 +771,7 @@ await doSomething { [someValue] x in}
 
 we capture `someValue`'s current value at that time and cannot not mutate it.
 
-### (@unchecked Sendable)[https://avanderlee.com/courses/wp/swift-concurrency/using-unchecked-sendable/]
+### [@unchecked Sendable](https://avanderlee.com/courses/wp/swift-concurrency/using-unchecked-sendable/)
 
 The ideal world is that all of our types are `Sendable`, but there can be cases where we know something is thread-safe and cannot conform to `Sendable`, so we need to have the compiler ignore it using `@unchecked Sendable`. 
 
@@ -1269,7 +1268,7 @@ and is to be used in cases in which we are really sure. It is also important we 
 
 `async`/`await` are very helpful, but they introduce the need of a context switch. `actor`s are very thread-safe, but they introduce their isolated domains and the need to interact with `Sendable` instances. In cases in which we want to protect a specific case of mutability, a mutex can be the simplest solution.
 
-#### (What is the difference between a Mutex and a Lock?)[https://www.avanderlee.com/concurrency/modern-swift-lock-mutex-the-synchronization-framework/]
+#### [What is the difference between a Mutex and a Lock?](https://www.avanderlee.com/concurrency/modern-swift-lock-mutex-the-synchronization-framework/)
 
 All mutexes are locks, but not all locks are mutexes. A mutex is a lock with strict ownership, meaning only one thread or task can lock/unlock it.
 
@@ -1633,7 +1632,7 @@ Task(name: "Some name \(index)") {
 
 when creating them from within a for-loop in order to see where they are being executed in Instruments.
 
-This task shows an (example)[https://github.com/AvdLee/Swift-Concurrency-Course/tree/main/Sample%20Code/Module%2010%20-%20Performance] of a for-loop running from within a Task that inherits the isolation context from the @MainActor:
+This task shows an [example](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main/Sample%20Code/Module%2010%20-%20Performance) of a for-loop running from within a Task that inherits the isolation context from the @MainActor:
 
 ```
 @MainActor
@@ -1825,7 +1824,7 @@ A final checklist to move along this funnel is:
 
 ## Testing Concurrent Code
 
-### (Testing concurrent code using XCTest)[https://github.com/AvdLee/Swift-Concurrency-Course/tree/main/Sample%20Code/Module%2011%20-%20Testing%20Concurrent%20Code]
+### [Testing concurrent code using XCTest](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main/Sample%20Code/Module%2011%20-%20Testing%20Concurrent%20Code)
 
 Tests that test methods that run in the `MainActor` have to be marked so as well. The ideal scenario would be to change the tested method so it runs on a different actor (if possible), but it is not always possible, so marking the test method itself with `@MainActor` fixes the error. It makes that the tests run in the main thread, so should be used with caution.
 
