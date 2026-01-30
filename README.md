@@ -799,7 +799,7 @@ final class Counter {
 
 There are scenarios in which the compiler can reason that there will not be a data race and does not send a warning, even if a mutable value is shared across domains and is not `Sendable`, like in this case:
 
-````
+```
 public class Person {
     var name: String
 }
