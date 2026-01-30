@@ -83,7 +83,7 @@ This shows us that the results for number1 and number2 were already fetched, way
 
 `async let` is a fancy `TaskGroup`. When different tasks as running asynchronously called and one fails, all tasks are not stopped immediately; instead it is waited until `await` is called.
 
-So if the examples above throws an error for the first call of ``fetchRandomNumber`, the second task would still be started and the error would only be propagated upon calling `await [number1, number2]`, upon which all running tasks would be cancelled automatically.
+So if the examples above throws an error for the first call of `fetchRandomNumber`, the second task would still be started and the error would only be propagated upon calling `await [number1, number2]`, upon which all running tasks would be cancelled automatically.
 
 ### How to make sure a task completes before the scope ends?
 
