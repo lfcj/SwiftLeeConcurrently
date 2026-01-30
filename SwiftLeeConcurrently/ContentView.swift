@@ -12,6 +12,7 @@ struct ContentView: View {
             let viewModel = PersonViewModel()
             Task {
                 viewModel.personName = nil
+                await TestingIsolationMacro().test()
             }
             Task {
                 message = viewModel.personName

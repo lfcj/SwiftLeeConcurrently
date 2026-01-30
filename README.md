@@ -2047,5 +2047,301 @@ final class MyClassTesting {
 }
 ```
 
- 
 ## Migrating existing code to Swift Concurrency & Swift 6
+
+### Steps to migrate existing code to Swift 6 and Strict Concurrency Checking
+
+#### 1. Find an isolated piece of code
+
+It is good to start with a piece of code that does not have dependencies.
+
+#### 2. Update related dependencies
+
+Take a look at 3rd party packages and check for available updates.
+
+#### 3. Add async alternatives
+
+Use the Editor -> Refactor -> `Add Async Alternative` or `Add Async Wrapper` option in Xcode to add `async` alternatives to methods with warnings once the build settings are changed.
+
+Then add a 'deprecated' warning to the old method:
+
+```
+@available(*, deprecated, renamed: "oldMethod(someParameter:)", message: "Consider using the async/await alternative.")
+```
+
+#### 4. Change the Default Actor Isolation
+
+The default actor isolation inside of Build Settings can be `MainActor` and resolve warnings and errors.
+
+#### 5. Enable Strict Concurrency Checking
+
+Enable strict concurrency checking as "Complete" inside of the Build Settings.
+
+**Minmal** enforces Sendable and actor-isolation checks where concurrency is explicitly used via @MainActor or @Sendable.
+
+**Targeted** enforces what minimal does as well as any type that conforms to `Sendable`.
+
+**Complete** enforces the above across all the codebase. Maximum safety.
+
+#### 6. Add Sendable conformances
+
+Make everything `Sendable`, even if the compiler has not complained _yet_.
+
+#### 7. Enable Approachable Concurrency
+
+Do it one-by-one and create a pull request for each of them. The list of approachable concurrency ones is in the point below.
+
+#### 8. Enable upcoming features
+
+Build settings allow to take on future features by enabling this:
+
+| Swift Compiler - Upcoming features | Enabled? | Notes |
+| ------------- | ------------- | ------------- |
+| Bare Slash Regex Literals | Yes |
+| Concise Magic File | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) | 
+| Default Internal Imports | No |
+| Deprecate Application Main | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| [Disable Outward Actor Isolation Inference](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0401-remove-property-wrapper-isolation.md) | Yes - $(SETTING_DefaultValue_$(SWIFT_UPCOMING_FEATURE_6_0)_$(SWIFT_APPROACHABLE_CONCURRENCY)) |
+| Dynamic Actor Isolation | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| Forward Trailing Closures | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| [Global-Actor-Isolated Types Usability](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0434-global-actor-isolated-types-usability.md) | Yes - $(SETTING_DefaultValue_$(SWIFT_UPCOMING_FEATURE_6_0)_$(SWIFT_APPROACHABLE_CONCURRENCY)) |
+| Implicitly Opened Existentials | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| Import Objective-C Forward Declarations | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| [Infer Isolated Conformances](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0470-isolated-conformances.md) | NO - $(SWIFT_APPROACHABLE_CONCURRENCY) |
+| [Infer Sendable for Methods and Key Path Literals](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0418-inferring-sendable-for-methods.md) | Yes - $(SETTING_DefaultValue_$(SWIFT_UPCOMING_FEATURE_6_0)_$(SWIFT_APPROACHABLE_CONCURRENCY)) |
+| Isolated Default Values | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| Isolated Global Variables | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| Member Import Visibility | No |
+| Nonfrozen Enum Exhaustivity | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| Region Based Isolation | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| [Require Existential any](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0335-existential-any.md) | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) |
+| [nonisolated (nonsending) By Default](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0461-async-function-isolation.md) | NO - $(SWIFT_APPROACHABLE_CONCURRENCY) |
+
+One option is also `Migrate`, instead of YES or NO, which allows using Swift's migration tooling.
+
+When enabling a proposed feature, do google the related proposal to understand the associated changes.
+
+#### 9. Change to Swift 6 language mode
+
+Change `Swift Language Version` to Swift 6. The ideal scenario is that there are no warnings...
+
+### [Migration tooling for upcoming Swift features](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0486-adoption-tooling-for-swift-features.md)
+
+When migrating to a feature, instead of marking "YES" directly, set 'Migrate'. This will show up warnings and adding Xcode's proposed changes is a good tool to wrap up the migration.
+
+### Techniques for rewriting closures to async/await syntax
+
+The first step is using the Editor -> Refactor -> Add Async Wrapper migration tool in order to avoid warnings.
+
+By adding the `deprecated` warning, the first migration to use all alternatives is a shorter path.
+
+The next step is using Editor -> Refactor -> Convert Function to Async...but that does not always gets rid of the closure, so manual rewriting is needed.
+
+When converting `Result<Success, Error>`, it is helpful to create a nested `enum MyError: Swift.Error` and throw it when there are issues calling our new code.
+
+### How and when to use @preconcurrency
+
+Similar to `@unchecked Sendable`, `@preconcurrency` helps mute concurrency-related warnings.
+
+This is helpful for 3rd party dependencies that one cannot control and can be used like this:
+
+```
+@preconcurrency import <some_module>
+```
+It is advised to only use this when there is a warning, not by default.
+
+### Migrating away from Functional Reactive Programming like RxSwift or Combine
+
+The current often usage of Combine in Swift Concurrency times is `@Published`: waiting for variable updates to update UI. The [SE-475 Transactional Observation of Values](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0475-observed.md) proposes adding `Observations` to be able to do the same with Swift Concurrency. An example would be:
+
+```
+let names = Observations { person.name }
+
+Task.detached {
+    for await name in names {
+            print("There is a new name: \(name)"
+    }
+}
+```
+
+It also allows to have several consumers in parallel, which is a must for Combine alternatives.
+
+It is advised to try to migrate to Swift Concurrency without touching Comobine. For example, in this code to debounce search queries:
+
+```
+$searchQuery
+    .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+    .sink(receiveValue: { /* do search and filtering */ })
+    .store(in: &cancellables)
+```
+the alternative would be:
+```
+func search(_ query: String) {
+    currentSearchTask?.cancel()
+    currentSearchTask = Task {
+        do {
+            try await Task.sleep(for: .milliseconds(500)) // Debounce
+            /* do search and filtering */ } 
+        } catch {
+            print("Search was cancelled")
+        }
+    }
+}
+```
+
+Another Combine -> Swift Concurrency migration example is going from a view that uses a `@Published` variable to perform a search:
+
+```
+struct Combine_ListView: View {
+    @StateObject private var myObservableObject = Combine_ObservableObject()
+    var body: some View {
+        List {
+            ForEach(myObservableObject.results, id: \.self) { title in
+                Text(title)
+            }
+        }
+        .searchable(text: $myObservableObject.searchQuery)
+    }
+}
+```
+to an option where the searchQuery is a local `@State` variable and `.onChange` helps us monitor changes in order to perform a search:
+```
+struct Concurrency_ListView: View {
+    @State private var searchQuery = ""
+    @State private var myObservableObject = Concurrency_ObservableObject()
+    var body: some View {
+        List {
+            ForEach(myObservableObject.results, id: \.self) { title in
+                Text(title)
+            }
+        }
+        .searchable(text: $searchQuery)
+        .onChange(of: searchQuery) { oldValue, newValue in
+            guard oldValue != newValue else { return }
+            myObservableObject.search(newValue)
+        }
+        // or:
+        .task(id: searchQuery) {
+            await articleSearcher.search(searchQuery)
+        }
+    }
+}
+```
+
+### A threading risk when using `sink` with actors
+
+Compile-time safety does not apply to `sink` closures. So what throws an error in this scenario:
+```
+NotificationCenter.default.addObserver(forName: .someNotification) { [weak self] _ in
+    self?.didReceiveSomeNotification() // Call to main actor-isolated instance in sync nonisolated context.
+}
+```
+passes quietly here:
+```
+NotificationCenter.default.publisher(for: someNotification) 
+    .sink { [weak self] _ in
+        self?.didReceiveSomeNotification()
+    }
+```
+
+And "notifications expect the poster to be in the same poster as the received", which is not very easy across a complete app...this translates to a crash when receiving a notification from a background thread and using `Combine`.
+
+The best option is to migrate to concurrency-safe notifications.
+
+The old API looks like this:
+
+```
+NotificationCenter.default.addObserver(forName: SomeObject.someNotification, queue: .main) { [weak self] _ in 
+        self?.handleSomeNotification()
+    }
+```
+
+the new one looks like this:
+```
+token = NotificationCenter.default.addObserver(of: SomeObject.self, for: .someNotification) { [weak self] message in
+    self?.handleSomeNotification
+}
+```
+
+While very similar, a big difference is the parameter of the completion method: message, which has a type of `MainActorMessage`:
+
+```
+public protocol MainActorMessage: SendableMetatype {
+    @MainActor static func makeMessage...
+    @MainActor static func makeNotification...
+}
+```
+Taking a further look, we see that notifications that conform to this protocol are used in the `addObserver` method variant that respects observing and receiving in the `@MainActor`:
+
+```
+public func addObserver<Identifier, Message>(of subject: Message.Subject.Type, for identifier: identifier, using observer: @escaping @MainActor (Message) -> Void) -> NotificationCenter.ObservationToken where identifier: NotificationCenter.MessageIdentifier, Message: NotificationCenter.MainActorMessage, Message == Identifier.MessageType.
+```
+
+We can see the `observer` above and the `makeMessage` and `makeNotifications` are all methods within the `@MainActor`, which allows the compiler reason about thread safety.
+
+#### Creating a custom AsyncMessage
+
+Let us imagine one has this notification:
+
+```
+extension Notification.Name {
+
+    /// Sent when user signs in, profile is passed as an object 
+    static let userDidSignIn = Notification.Name(rawValue: "userDidSignIn")
+}
+```
+
+The first step to migrate this notification to use the new API is:
+
+```
+struct UserDidSignInMessage: NotificationCenter.AsyncMessage {
+    typealias Subject = Profile
+    let profile: Subject
+}
+```
+
+and then, using the [discoverability using Static Member Lookup in Generic Contexts](https://www.avanderlee.com/swift/static-member-lookup-generic-contexts/), we can do:
+
+```
+extension NotificationCenter.MessageIdentifier where Self == NotificationCenter.BaseMessageIdentifier<UserDidSignInMessage> {
+    static var userDidSignIn: NotificationCenter.BaseMessageIdentifier<UserDidSignInMessage> {
+        .init()
+    }
+}
+```
+
+Once we have the message defined, we need to adapt our observation logic like this:
+
+```
+userDidSignInToken = NotificationCenter.default.addObserver(of: Profile.self, for: .userDidSignIn) { [weak self] message in
+    self?.handleSignIn(with: message.profile)
+}
+```
+
+### Using Agent Skills for Swift Concurrency
+
+These notes are a summary of [this video](https://www.youtube.com/watch?v=khekVi1PK3o&t=1s), which explains how to use [Agent Skills](https://agentskills.io/home) in order to help adopt and keep up with Swift Concurrency.
+
+#### Hot do skills work?
+
+Agent Skills has a list of skills one first explores, e.g.:
+- I want to refactor SwiftUI
+- I want to improve Swift Concurrency
+
+A skill to do so is found and its SKILL.md is read. Its instructions are then executed by reading instructions one-by-one.
+
+It is advised to use the latest skill to plan a refactor. For Swift, Antoine created the [Swift Concurrency Agent Skill repo](https://github.com/AvdLee/Swift-Concurrency-Agent-Skill)
+
+Reading the references inside of `swift-concurrency` alone is like following the course above, full of best practices with code examples.
+
+Starting minute 10, it shows a real-life example. OMG, super mighty tool.
+
+
+
+## Conclusion
+
+This has been a very good overview of Swift Concurrency, which fixes a lot of the things that were wrong with Swift and its concurrency.
+
+Applying it helps increase UI responsiveness, eliminate data races and make the app generally smoother.
+
+Will be applying the learnings to https://github.com/lfcj/listen-anonymously/tree/main
