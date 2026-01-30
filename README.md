@@ -2094,8 +2094,8 @@ Do it one-by-one and create a pull request for each of them. The list of approac
 
 Build settings allow to take on future features by enabling this:
 
-| Swift Compiler - Upcoming features | Enabled? | Notes |
-| ------------- | ------------- | ------------- |
+| Swift Compiler - Upcoming features | Enabled? |
+| ------------- | ------------- |
 | Bare Slash Regex Literals | Yes |
 | Concise Magic File | Yes - $(SWIFT_UPCOMING_FEATURE_6_0) | 
 | Default Internal Imports | No |
