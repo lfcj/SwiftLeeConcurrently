@@ -1,6 +1,6 @@
 # Swiftlee Concurrency - Swift 6
 
-These are the notes for [AvdLee's Swift Concurrency Code](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main)
+These are the notes for [AvdLee's Swift Concurrency Code](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main). Examples given by Antoine have mostly been converted to examples I tested in Xcode to make sure I understood the concept. Whenever his words are used verbatim, they are quoted. Nevertheless, putting this structure and content together is his intellectual property.
 
 What started in Swift 5 as implementing the ideas behind Lattner's Manifesto, has now continued with Swift 6.
 
