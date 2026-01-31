@@ -1,11 +1,21 @@
 # Swiftlee Concurrency - Swift 6
 
-These are the notes for [AvdLee's Swift Concurrency Code](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main). Examples given by Antoine have mostly been converted to examples I tested in Xcode to make sure I understood the concept. Whenever his words are used verbatim, they are quoted. Nevertheless, putting this structure and content together is his intellectual property.
 
-What started in Swift 5 as implementing the ideas behind Lattner's Manifesto, has now continued with Swift 6.
 
-Its goal is to eliminate all data races and help code become more predictable, reducing unexpected runtime issues.
+#### Disclaimer
+These are the notes for [AvdLee's Swift Concurrency Code](https://github.com/AvdLee/Swift-Concurrency-Course/tree/main) and both structure and content are based on his course.
 
+The examples given in the course were mostly converted to examples I myself tested in Xcode to make sure I understood the concept. I tried not to copy his examples 1:1 to respect his intellectual property. Also, text that was taken verbatim from the course is displayed quoted.
+
+__________________
+
+#### Introduction
+
+What started in Swift 5 as implementing the ideas behind Lattner's Manifesto, has now continued with Swift 6 and in Swift Concurrency.
+
+The primary goal of the Manifesto was to eliminate data races and help code become more predictable. Not only was the goal accomplished, but a new way of thinking in concurrency became mandatory for Swift 6.2.
+
+This course visits all aspects of this "new mindset" in a practical way.
 
 ## Async/Await
 
