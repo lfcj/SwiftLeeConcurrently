@@ -80,7 +80,7 @@ public final class NetworkOperatorPerformer: Sendable {
                     guard let self = self else {
                         return Result<T, NetworkOperationExecutionError>.failure(.deallocatedSelf)
                     }
-                    for await isNetworkAvailable in self.networkMonitor.connectionUpdates {
+                    for await isNetworkAvailable in await self.networkMonitor.connectionUpdates {
                         if isNetworkAvailable {
                             let result = await closure()
                             return Result<T, NetworkOperationExecutionError>.success(result)

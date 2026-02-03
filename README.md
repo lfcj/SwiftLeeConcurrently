@@ -6,6 +6,7 @@ What started in Swift 5 as implementing the ideas behind Lattner's Manifesto, ha
 
 Its goal is to eliminate all data races and help code become more predictable, reducing unexpected runtime issues.
 
+> **Important:** The code in this repository will **not** compile. That is intentional. The course highlighted errors that are exclusive to Swift Concurrency changes and their possible solutions. I noted the solutions in the README and left the errors in the codebase.
 
 ## Async/Await
 

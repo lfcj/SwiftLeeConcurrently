@@ -78,7 +78,7 @@ struct NetworkPerformerTests {
     }
 }
 
-final class FakeNetworkMonitoring: NSObject, NetworkMonitoring {
+final class FakeNetworkMonitoring: NSObject, NetworkMonitoring, @unchecked Sendable {
     let continuation: AsyncStream<Bool>.Continuation?
     var connectionUpdates: AsyncStream<Bool>
 
